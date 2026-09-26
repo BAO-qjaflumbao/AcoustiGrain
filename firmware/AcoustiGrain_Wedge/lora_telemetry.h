@@ -15,22 +15,16 @@
 class LoRaManager {
 public:
   void setupLoRa() {
-    // Initialize SPI and LoRa module (RFM95W / SX1276)
-    SPI.begin();
-    pinMode(LORA_CS, OUTPUT);
-    digitalWrite(LORA_CS, HIGH);
-    pinMode(LORA_RESET, OUTPUT);
-
-    digitalWrite(LORA_RESET, LOW);
-    delay(10);
-    digitalWrite(LORA_RESET, HIGH);
-    delay(10);
-
-    Serial.println(F("[LoRa] Initialized RFM95W transceiver module @ 915 MHz"));
+    // Initialize HardwareSerial for EBYTE E220-900T22D (SX1262) 915MHz UART 2-Pin Module
+    Serial1.begin(LORA_BAUD, SERIAL_8N1, LORA_UART_RX, LORA_UART_TX);
+    Serial.println(F("[LoRa] Initialized EBYTE E220-900T22D 915MHz UART 2-Pin Module on Pins D6 (TX) & D7 (RX) @ 9600 baud"));
   }
 
   // Transmit packed bio-acoustic telemetry status structure
   bool transmitPacket(WedgePacket packet) {
+    // Transmit packed telemetry packet over EBYTE E220 UART interface
+    Serial1.write((uint8_t*)&packet, sizeof(packet));
+
     Serial.print(F("[LoRa] Transmitting packet from Node 0x"));
     Serial.print(packet.deviceId, HEX);
     Serial.print(F(" - Status: "));

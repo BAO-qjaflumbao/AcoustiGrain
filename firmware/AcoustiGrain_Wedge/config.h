@@ -36,11 +36,16 @@
 #define NOISE_FLOOR_DB  -90.0 // Moderate Threshold for faint Bukbok clicks (-90.0 dBFS)
 #define CRITICAL_DB     -80.0 // Critical Threshold for active Bukbok chewing (-80.0 dBFS)
 
-// --- RFM95W / SX1276 LoRa Transceiver Pin Definitions for Seeed XIAO ESP32-S3 ---
-#define LORA_CS         D0    // GPIO1  -> RFM95W NSS / CS
-#define LORA_RESET      D6    // GPIO43 -> RFM95W Reset Pin
-#define LORA_DIO0       D7    // GPIO44 -> RFM95W Interrupt DIO0 Pin
-#define LORA_BAND       915.0 // Sub-GHz Frequency in MHz (Philippines / US915)
+// --- EBYTE E220-900T22D (SX1262) 915MHz 2-Pin UART LoRa Transceiver Definitions ---
+#define LORA_UART_TX   D6    // XIAO D6 (GPIO43 TX) -> E220 RX
+#define LORA_UART_RX   D7    // XIAO D7 (GPIO44 RX) -> E220 TX
+#define LORA_BAUD      9600  // Default EBYTE E220 Serial Baud Rate
+#define LORA_BAND      915.0 // Sub-GHz Frequency in MHz (Philippines / US915)
+
+// --- Optional RFM95W / SX1276 SPI Pin Fallbacks ---
+#define LORA_CS        D0    // GPIO1 -> SPI CS
+#define LORA_RESET     D6    // GPIO43 -> Reset
+#define LORA_DIO0      D7    // GPIO44 -> DIO0 Interrupt
 
 // --- Power State & Deep Sleep Duty Cycling ---
 #define TIME_ACTIVE_SEC 30    // Active sensing window (seconds)
