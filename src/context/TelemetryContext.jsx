@@ -181,11 +181,17 @@ export function TelemetryProvider({ children, user }) {
     const freqMatch = line.match(/Peak:\s*(\d+)\s*Hz/i);
     const dbMatch = line.match(/@\s*(-?\d+)\s*dBFS/i);
     const statusMatch = line.match(/Status:\s*(\d+)/i);
+    const batMatch = line.match(/(?:Bat|Battery):\s*(\d+)%/i);
+    const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d\.]+)/i);
+    const humMatch = line.match(/(?:Hum|Humidity):\s*([\d\.]+)/i);
 
-    if (freqMatch || dbMatch || statusMatch) {
+    if (freqMatch || dbMatch || statusMatch || batMatch || tempMatch || humMatch) {
       const peakFreqHz = freqMatch ? parseInt(freqMatch[1], 10) : 0;
       const amplitudeDb = dbMatch ? parseInt(dbMatch[1], 10) : -90;
       const statusVal = statusMatch ? parseInt(statusMatch[1], 10) : -1;
+      const parsedBat = batMatch ? parseInt(batMatch[1], 10) : null;
+      const parsedTemp = tempMatch ? parseFloat(tempMatch[1]) : null;
+      const parsedHum = humMatch ? parseFloat(humMatch[1]) : null;
       
       // Bio-Acoustic Grain Insertion & High Sensitivity Filter:
       // Real INMP441 MEMS I2S microphone 24-bit FFT energy for rice grain scratching / Bukbok clicking sits between -85 dBFS and -55 dBFS.
@@ -211,6 +217,9 @@ export function TelemetryProvider({ children, user }) {
         status: statusText,
         infestationLevel,
         weevilCountEst,
+        ...(parsedBat !== null && { battery: parsedBat, batteryPct: parsedBat }),
+        ...(parsedTemp !== null && { temperature: parsedTemp }),
+        ...(parsedHum !== null && { humidity: parsedHum }),
         lastSeen: `Just now (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})`
       };
 

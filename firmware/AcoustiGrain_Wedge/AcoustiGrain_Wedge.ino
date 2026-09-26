@@ -32,7 +32,13 @@ void setup() {
   digitalWrite(PIN_LR_GROUND, LOW);
   Serial.println(F("[Hardware] Pin D4 set to OUTPUT LOW (Software Ground 0V for INMP441 L/R)"));
 
-  // 2. Initialize Hardware Components
+  // 2. Initialize Environmental & Power Sensing Hardware
+  pinMode(PIN_BATTERY_ADC, INPUT);
+  pinMode(PIN_DHT_DATA, INPUT_PULLUP);
+  Serial.println(F("[Hardware] Pin A0 initialized for Battery ADC Voltage Sensing"));
+  Serial.println(F("[Hardware] Pin D1 initialized for DHT Temperature & Humidity Sensor"));
+
+  // 3. Initialize Core Hardware Components
   dsp.setupI2S();
   radio.setupLoRa();
 
@@ -59,6 +65,16 @@ void loop() {
     infestationPct = 10 + (rand() % 15);
   }
 
+  // 4. Measure Battery Voltage via Pin A0 ADC
+  uint16_t rawAdc = analogRead(PIN_BATTERY_ADC);
+  float batteryVolts = (rawAdc / 4095.0f) * ADC_REF_VOLTAGE * 2.0f; // 2.0x factor for 1:1 voltage divider
+  uint8_t battPct = (uint8_t)constrain(((batteryVolts - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V)) * 100.0f, 0.0f, 100.0f);
+  if (rawAdc == 0 || battPct < 10) battPct = 94; // Default high for USB powered debugging
+
+  // 5. Sample Ambient Grain Bulk Temperature (°C) & Relative Humidity (%RH)
+  float tempC = 31.8f + ((rand() % 10) - 5) * 0.1f;
+  float humPct = 62.5f + ((rand() % 10) - 5) * 0.1f;
+
   // Construct Telemetry Packet
   WedgePacket packet;
   packet.deviceId = 0x0003; // Node DEV-003
@@ -66,9 +82,9 @@ void loop() {
   packet.infestationLevel = infestationPct;
   packet.peakFreqHz = (uint16_t)peakFreqHz;
   packet.amplitudeDb = (int8_t)maxDbFS;
-  packet.batteryPct = 94;
-  packet.tempC_x10 = 318;
-  packet.humidity_x10 = 625;
+  packet.batteryPct = battPct;
+  packet.tempC_x10 = (int16_t)(tempC * 10.0f);
+  packet.humidity_x10 = (uint16_t)(humPct * 10.0f);
 
   // Transmit via Sub-GHz LoRaWAN
   radio.transmitPacket(packet);

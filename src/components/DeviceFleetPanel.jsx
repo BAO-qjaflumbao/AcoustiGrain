@@ -88,6 +88,7 @@ export default function DeviceFleetPanel() {
                   <th className="py-3.5 px-4">Designated Storage Bin</th>
                   <th className="py-3.5 px-4">Insertion Depth</th>
                   <th className="py-3.5 px-4">Battery Health</th>
+                  <th className="py-3.5 px-4">Temp &amp; Humidity</th>
                   <th className="py-3.5 px-4">Wireless Signal</th>
                   <th className="py-3.5 px-4">Pest Threat Level</th>
                   <th className="py-3.5 px-4">Power Status</th>
@@ -153,6 +154,15 @@ export default function DeviceFleetPanel() {
                           />
                         </div>
                         <span className="font-bold text-xs font-mono">{node.battery}%</span>
+                      </div>
+                    </td>
+
+                    {/* Temp & Humidity */}
+                    <td className="py-3.5 px-4 font-mono text-xs">
+                      <div className="flex items-center space-x-1.5 text-ink-800">
+                        <span className="font-bold text-ink-900">{node.temperature || 31.8}°C</span>
+                        <span className="text-ink-400">/</span>
+                        <span className="font-semibold text-grain-600">{node.humidity || 62.5}% RH</span>
                       </div>
                     </td>
 

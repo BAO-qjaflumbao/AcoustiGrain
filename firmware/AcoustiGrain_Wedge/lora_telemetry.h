@@ -39,7 +39,13 @@ public:
     Serial.print(packet.peakFreqHz);
     Serial.print(F(" Hz @ "));
     Serial.print(packet.amplitudeDb);
-    Serial.println(F(" dBFS"));
+    Serial.print(F(" dBFS | Bat: "));
+    Serial.print(packet.batteryPct);
+    Serial.print(F("% | Temp: "));
+    Serial.print(packet.tempC_x10 / 10.0f, 1);
+    Serial.print(F("C | Hum: "));
+    Serial.print(packet.humidity_x10 / 10.0f, 1);
+    Serial.println(F("%"));
 
     // Microcontroller SPI packet transmit simulation
     delay(200);

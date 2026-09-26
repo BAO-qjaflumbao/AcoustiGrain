@@ -46,6 +46,13 @@
 #define TIME_ACTIVE_SEC 30    // Active sensing window (seconds)
 #define TIME_SLEEP_SEC  14400 // Deep sleep duration (4 hours = 14400s)
 
+// --- Environmental & Battery Level Sensor Pin Mappings ---
+#define PIN_BATTERY_ADC A0    // ADC Pin for LiPo Battery Voltage Sensing (Voltage Divider 100k/100k)
+#define PIN_DHT_DATA    D1    // Digital Data Pin for DHT22 / DHT11 Temperature & Humidity Sensor
+#define ADC_REF_VOLTAGE 3.3f  // Reference voltage for ESP32-S3 ADC
+#define BATTERY_MAX_V   4.2f  // 100% Fully Charged 3.7V LiPo Cell Voltage
+#define BATTERY_MIN_V   3.3f  // 0% Cutoff LiPo Cell Voltage
+
 // --- Infestation Status Codes ---
 enum InfestationStatus {
   STATUS_SAFE = 0,
