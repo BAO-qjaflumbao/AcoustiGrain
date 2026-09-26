@@ -1,59 +1,48 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTelemetry } from '../context/TelemetryContext';
 import { 
-  Box, 
-  Layers, 
-  RotateCw, 
-  ZoomIn, 
-  ZoomOut, 
-  Info, 
-  Cpu, 
-  AlertTriangle,
-  Flame,
-  Thermometer,
-  Droplets,
-  Volume2,
-  Maximize2,
-  RefreshCw,
-  MapPin,
-  Move
+  Box, RotateCw, ZoomIn, ZoomOut, RefreshCw, Move,
+  ChevronUp, ChevronDown, Edit3, MousePointer2,
+  Flame, Volume2
 } from 'lucide-react';
 
 export default function WarehouseHeatmap3D() {
-  const { nodes, selectedNode, setSelectedNodeId, metrics } = useTelemetry();
+  const { nodes, selectedNode, setSelectedNodeId } = useTelemetry();
   const canvasRef = useRef(null);
-  const [viewMode, setViewMode] = useState('isometric'); // 'isometric', 'topdown'
+  
+  const [viewMode, setViewMode] = useState('isometric');
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const [rotationAngle, setRotationAngle] = useState(0); // 0, 90, 180, 270 degrees
+  const [rotationAngle, setRotationAngle] = useState(0); 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [hoveredZone, setHoveredZone] = useState(null);
+  
+  const [activeZ, setActiveZ] = useState(0);
+  const [editMode, setEditMode] = useState(false);
+  const [initialLayout, setInitialLayout] = useState({ stacks: [], cols: 6, rows: 5 });
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [hoveredCell, setHoveredCell] = useState(null); 
+  const [hoveredAction, setHoveredAction] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, visible: false, text: '' });
 
-  const stacksList = [
-    { id: 'stack-a1', zone: 'Bin A1', gx: -4, gy: -3 },
-    { id: 'stack-b1', zone: 'Bin B1', gx: -1.5, gy: -3 },
-    { id: 'stack-c1', zone: 'Bin C1', gx: 1, gy: -3 },
-    { id: 'stack-d1', zone: 'Bin D1', gx: 3.5, gy: -3 },
+  const [gridCols, setGridCols] = useState(6);
+  const [gridRows, setGridRows] = useState(5);
 
-    { id: 'stack-a2', zone: 'Bin A2', gx: -4, gy: 0 },
-    { id: 'stack-b2', zone: 'Bin B2', gx: -1.5, gy: 0 },
-    { id: 'stack-c2', zone: 'Bin C2', gx: 1, gy: 0 },
-    { id: 'stack-d2', zone: 'Bin D2', gx: 3.5, gy: 0 },
+  const [stacks, setStacks] = useState(() => {
+    const initial = [];
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < 4; x++) {
+        const zone = `Bin ${String.fromCharCode(65 + x)}${y + 1}`;
+        initial.push({ x, y, z: 0, zone });
+      }
+    }
+    return initial;
+  });
 
-    { id: 'stack-a3', zone: 'Bin A3', gx: -4, gy: 3 },
-    { id: 'stack-b3', zone: 'Bin B3', gx: -1.5, gy: 3 },
-    { id: 'stack-c3', zone: 'Bin C3', gx: 1, gy: 3 },
-    { id: 'stack-d3', zone: 'Bin D3', gx: 3.5, gy: 3 },
-  ];
-
-  // Canvas-based interactive 3D / Isometric render loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    
     let animationFrameId;
 
     const render = () => {
@@ -61,96 +50,186 @@ export default function WarehouseHeatmap3D() {
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
 
-      // Background floor (warm husk color)
       ctx.fillStyle = '#F7F5F0';
       ctx.fillRect(0, 0, width, height);
 
-      // Floor grid lines
-      ctx.strokeStyle = '#E7E4DE';
-      ctx.lineWidth = 1;
       const originX = width / 2;
       const originY = height / 3.5;
 
+      const offsetX = -gridCols / 2;
+      const offsetY = -gridRows / 2;
+
       if (viewMode === 'isometric') {
-        // Draw Isometric Warehouse Floor Grid
-        for (let x = -6; x <= 6; x++) {
+        ctx.strokeStyle = '#E7E4DE';
+        ctx.lineWidth = 1;
+
+        for (let x = 0; x <= gridCols; x++) {
           ctx.beginPath();
-          const p1 = isoToScreen(x, -6, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
-          const p2 = isoToScreen(x, 6, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+          const p1 = isoToScreen(x + offsetX, offsetY, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+          const p2 = isoToScreen(x + offsetX, gridRows + offsetY, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+        }
+        for (let y = 0; y <= gridRows; y++) {
+          ctx.beginPath();
+          const p1 = isoToScreen(offsetX, y + offsetY, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+          const p2 = isoToScreen(gridCols + offsetX, y + offsetY, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
           ctx.moveTo(p1.x, p1.y);
           ctx.lineTo(p2.x, p2.y);
           ctx.stroke();
         }
 
-        for (let y = -6; y <= 6; y++) {
-          ctx.beginPath();
-          const p1 = isoToScreen(-6, y, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
-          const p2 = isoToScreen(6, y, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
-          ctx.stroke();
-        }
+        const sortedStacks = [...stacks].sort((a, b) => {
+          if (a.z !== b.z) return a.z - b.z;
+          return (a.x + a.y) - (b.x + b.y);
+        });
 
-        // Render Stack Blocks (Kamadas) in 3D Isometric View
-        stacksList.forEach(stk => {
+        sortedStacks.forEach(stk => {
           const stkNodes = nodes.filter(n => n.zone === stk.zone);
-          const maxStatus = stkNodes.some(n => n.status === 'Critical') ? 'Critical' :
-                          stkNodes.some(n => n.status === 'Moderate') ? 'Moderate' : 'Safe';
-          const isSelectedZone = selectedNode.zone === stk.zone;
-          const isHovered = hoveredZone === stk.zone;
+          const maxStatus = stkNodes.length > 0 ? (stkNodes.some(n => n.status === 'Critical') ? 'Critical' :
+                          stkNodes.some(n => n.status === 'Moderate') ? 'Moderate' : 'Safe') : 'Safe';
+                          
+          const isSelectedZone = !editMode && selectedNode.zone === stk.zone;
+          const isHovered = hoveredCell && hoveredCell.x === stk.x && hoveredCell.y === stk.y && hoveredCell.z === stk.z;
 
-          const colorMap = {
+          let colors = {
             Critical: { top: '#C0392B', left: '#A52A1C', right: '#8E2115' },
             Moderate: { top: '#C97A1F', left: '#AF6716', right: '#93530E' },
             Safe: { top: '#1E8E5A', left: '#177448', right: '#125B37' }
-          };
-          let colors = colorMap[maxStatus];
+          }[maxStatus];
 
-          if (isSelectedZone || isHovered) {
-            colors = {
-              top: isSelectedZone ? '#AC7F35' : colors.top,
-              left: isSelectedZone ? '#8C6529' : colors.left,
-              right: isSelectedZone ? '#6B4C1F' : colors.right
-            };
+          ctx.globalAlpha = (stk.z === activeZ) ? 1.0 : 0.25;
+
+          drawIsoBlock(ctx, stk.x + offsetX + 0.1, stk.y + offsetY + 0.1, stk.z, 0.8, 0.8, 0.8, colors, originX, originY, zoomLevel, stk.zone.split(' ')[1], isSelectedZone || (!editMode && isHovered), panOffset.x, panOffset.y, rotationAngle);
+        });
+        
+        ctx.globalAlpha = 1.0;
+
+        if (editMode) {
+          if (hoveredCell && hoveredCell.z === activeZ) {
+            const colors = hoveredCell.exists 
+              ? { top: 'rgba(239, 68, 68, 0.7)', left: 'rgba(185, 28, 28, 0.7)', right: 'rgba(153, 27, 27, 0.7)' } 
+              : hoveredCell.valid 
+                ? { top: 'rgba(34, 197, 94, 0.7)', left: 'rgba(22, 163, 74, 0.7)', right: 'rgba(21, 128, 61, 0.7)' }
+                : { top: 'rgba(156, 163, 175, 0.5)', left: 'rgba(107, 114, 128, 0.5)', right: 'rgba(75, 85, 99, 0.5)' };
+
+            drawIsoBlock(ctx, hoveredCell.x + offsetX + 0.1, hoveredCell.y + offsetY + 0.1, activeZ, 0.8, 0.8, 0.8, colors, originX, originY, zoomLevel, hoveredCell.exists ? 'DEL' : 'ADD', true, panOffset.x, panOffset.y, rotationAngle);
           }
 
-          drawIsoBlock(ctx, stk.gx, stk.gy, 0, 1.8, 1.8, 2.2, colors, originX, originY, zoomLevel, stk.zone, isSelectedZone || isHovered, panOffset.x, panOffset.y, rotationAngle);
-
-          // Draw wedge probes inside stack layers
-          stkNodes.forEach(node => {
-            const probeZ = node.depthCm === 15 ? 1.8 : node.depthCm === 45 ? 1.1 : 0.4;
-            const probePos = isoToScreen(stk.gx + 0.9, stk.gy + 0.9, probeZ, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
-
-            ctx.fillStyle = node.id === selectedNode.id ? '#FBF7ED' : '#FFFFFF';
-            ctx.beginPath();
-            ctx.arc(probePos.x, probePos.y, (node.id === selectedNode.id ? 7 : 5) * zoomLevel, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#1A1712';
-            ctx.lineWidth = node.id === selectedNode.id ? 2.5 : 1.5;
-            ctx.stroke();
-
-            // Label
-            ctx.fillStyle = '#1A1712';
-            ctx.font = 'bold 10px Inter, sans-serif';
-            ctx.fillText(node.id, probePos.x + 8, probePos.y + 3);
-          });
-        });
+          // Expansion arrows
+          const plusXCenter = isoToScreen(gridCols + offsetX + 0.5, offsetY + gridRows / 2, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+          drawExpandButton(ctx, plusXCenter.x, plusXCenter.y, hoveredAction === 'expandX', zoomLevel);
+          
+          const plusYCenter = isoToScreen(offsetX + gridCols / 2, gridRows + offsetY + 0.5, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+          drawExpandButton(ctx, plusYCenter.x, plusYCenter.y, hoveredAction === 'expandY', zoomLevel);
+        }
 
       } else {
-        // Top Down 2D Floorplan Mode
-        stacks2D(ctx, width, height, nodes, selectedNode, hoveredZone, panOffset.x, panOffset.y, zoomLevel);
+        // 2D View
+        const marginX = 80 + panOffset.x;
+        const marginY = 60 + panOffset.y;
+        const blockW = ((width - 160) / gridCols) * zoomLevel;
+        const blockH = ((height - 120) / gridRows) * zoomLevel;
+
+        for (let y = 0; y < gridRows; y++) {
+          for (let x = 0; x < gridCols; x++) {
+            const px = marginX + x * (blockW + 10 * zoomLevel);
+            const py = marginY + y * (blockH + 10 * zoomLevel);
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.03)';
+            ctx.strokeStyle = '#E7E4DE';
+            ctx.lineWidth = 1;
+            ctx.fillRect(px, py, blockW, blockH);
+            ctx.strokeRect(px, py, blockW, blockH);
+
+            const stk = stacks.find(s => s.x === x && s.y === y && s.z === activeZ);
+            
+            if (stk) {
+              const stkNodes = nodes.filter(n => n.zone === stk.zone);
+              const maxLevel = stkNodes.length > 0 ? Math.max(...stkNodes.map(n => n.infestationLevel), 0) : 0;
+              const isCrit = stkNodes.some(n => n.status === 'Critical');
+              const isMod = stkNodes.some(n => n.status === 'Moderate');
+              
+              const isSelected = !editMode && selectedNode.zone === stk.zone;
+              const isHovered = hoveredCell && hoveredCell.x === x && hoveredCell.y === y && hoveredCell.z === activeZ;
+              
+              ctx.fillStyle = isCrit ? 'rgba(192, 57, 43, 0.85)' : isMod ? 'rgba(201, 122, 31, 0.85)' : 'rgba(30, 142, 90, 0.85)';
+              
+              if (editMode && isHovered) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.85)';
+              }
+
+              ctx.fillRect(px, py, blockW, blockH);
+
+              if (isSelected || (!editMode && isHovered)) {
+                ctx.strokeStyle = '#3B82F6';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(px, py, blockW, blockH);
+              }
+              
+              ctx.fillStyle = '#FFFFFF';
+              ctx.font = 'bold 12px Inter, sans-serif';
+              ctx.fillText(stk.zone, px + 8, py + 20);
+              
+              ctx.font = '10px Inter, sans-serif';
+              ctx.fillText(`Pests: ${maxLevel}%`, px + 8, py + 35);
+            } else if (editMode && hoveredCell && hoveredCell.x === x && hoveredCell.y === y && hoveredCell.z === activeZ) {
+              ctx.fillStyle = hoveredCell.valid ? 'rgba(34, 197, 94, 0.5)' : 'rgba(156, 163, 175, 0.5)';
+              ctx.fillRect(px, py, blockW, blockH);
+              ctx.fillStyle = '#FFFFFF';
+              ctx.font = 'bold 12px Inter, sans-serif';
+              ctx.fillText('ADD', px + 8, py + 20);
+            }
+            
+            const stackBelow = stacks.find(s => s.x === x && s.y === y && s.z < activeZ);
+            if (!stk && stackBelow) {
+              ctx.fillStyle = 'rgba(0,0,0,0.1)';
+              ctx.fillRect(px, py, blockW, blockH);
+              ctx.fillStyle = '#999';
+              ctx.font = '10px Inter, sans-serif';
+              ctx.fillText(`${stackBelow.zone} (L${stackBelow.z})`, px + 8, py + 20);
+            }
+          }
+        }
+
+        if (editMode) {
+          const plusX_X = marginX + gridCols * (blockW + 10 * zoomLevel) + 20 * zoomLevel;
+          const plusX_Y = marginY + (gridRows/2) * (blockH + 10 * zoomLevel);
+          drawExpandButton(ctx, plusX_X, plusX_Y, hoveredAction === 'expandX', zoomLevel);
+
+          const plusY_X = marginX + (gridCols/2) * (blockW + 10 * zoomLevel);
+          const plusY_Y = marginY + gridRows * (blockH + 10 * zoomLevel) + 20 * zoomLevel;
+          drawExpandButton(ctx, plusY_X, plusY_Y, hoveredAction === 'expandY', zoomLevel);
+        }
       }
 
       animationFrameId = requestAnimationFrame(render);
     };
 
     render();
-
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewMode, zoomLevel, panOffset, rotationAngle, nodes, selectedNode, hoveredZone]);
+  }, [viewMode, zoomLevel, panOffset, rotationAngle, nodes, selectedNode, hoveredCell, hoveredAction, stacks, activeZ, editMode, gridCols, gridRows]);
 
-  // Handle Drag to Pan & Hover
+  const handleToggleEditMode = () => {
+    if (editMode) {
+      const hasChanges = JSON.stringify(stacks) !== JSON.stringify(initialLayout.stacks) ||
+                         gridCols !== initialLayout.cols ||
+                         gridRows !== initialLayout.rows;
+      if (hasChanges) {
+        setShowSavePrompt(true);
+      } else {
+        setEditMode(false);
+      }
+    } else {
+      setInitialLayout({ stacks: [...stacks], cols: gridCols, rows: gridRows });
+      setEditMode(true);
+    }
+  };
+
   const handleMouseDown = (e) => {
+    if (editMode && hoveredAction) return; 
+    if (editMode && hoveredCell) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
   };
@@ -164,7 +243,6 @@ export default function WarehouseHeatmap3D() {
       return;
     }
 
-    // Hover hit test
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -179,59 +257,101 @@ export default function WarehouseHeatmap3D() {
     const originX = width / 2;
     const originY = height / 3.5;
 
-    let foundZone = null;
+    let foundCell = null;
+    let foundAction = null;
+    let tooltip = { visible: false, text: '', x: 0, y: 0 };
+    const offsetX = -gridCols / 2;
+    const offsetY = -gridRows / 2;
 
     if (viewMode === 'isometric') {
-      for (let stk of stacksList) {
-        const center = isoToScreen(stk.gx + 0.9, stk.gy + 0.9, 1.1, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
-        const dist = Math.hypot(mouseX - center.x, mouseY - center.y);
-        if (dist < 42 * zoomLevel) {
-          foundZone = stk.zone;
-          setTooltipPos({
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top - 30,
-            visible: true,
-            text: `${stk.zone} (Click to select)`
-          });
-          break;
+      if (editMode) {
+        const plusX = isoToScreen(gridCols + offsetX + 0.5, offsetY + gridRows / 2, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+        const plusY = isoToScreen(offsetX + gridCols / 2, gridRows + offsetY + 0.5, 0, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+        
+        if (Math.hypot(mouseX - plusX.x, mouseY - plusX.y) < 20 * zoomLevel) foundAction = 'expandX';
+        else if (Math.hypot(mouseX - plusY.x, mouseY - plusY.y) < 20 * zoomLevel) foundAction = 'expandY';
+      }
+
+      if (!foundAction) {
+        for (let y = 0; y < gridRows; y++) {
+          for (let x = 0; x < gridCols; x++) {
+            const center = isoToScreen(x + offsetX + 0.5, y + offsetY + 0.5, activeZ + 0.8, originX, originY, zoomLevel, panOffset.x, panOffset.y, rotationAngle);
+            const dist = Math.hypot(mouseX - center.x, mouseY - center.y);
+            
+            if (dist < 25 * zoomLevel) {
+              const exists = stacks.some(s => s.x === x && s.y === y && s.z === activeZ);
+              const valid = activeZ === 0 || stacks.some(s => s.x === x && s.y === y && s.z === activeZ - 1);
+              foundCell = { x, y, z: activeZ, exists, valid };
+              
+              tooltip = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top - 30,
+                visible: true,
+                text: editMode 
+                  ? (exists ? 'Click to Delete' : (valid ? 'Click to Add' : 'Cannot place here (No support)'))
+                  : (exists ? `Bin ${String.fromCharCode(65 + x)}${y + 1} (L${activeZ})` : 'Empty Space')
+              };
+              break;
+            }
+          }
+          if (foundCell) break;
         }
       }
     } else {
-      const cols = 4;
-      const rows = 3;
-      const marginX = 80 + panOffset.x;
-      const marginY = 60 + panOffset.y;
-      const blockW = ((width - 160) / cols) * zoomLevel;
-      const blockH = ((height - 120) / rows) * zoomLevel;
+        const marginX = 80 + panOffset.x;
+        const marginY = 60 + panOffset.y;
+        const blockW = ((width - 160) / gridCols) * zoomLevel;
+        const blockH = ((height - 120) / gridRows) * zoomLevel;
 
-      const zones = [
-        ['Bin A1', 'Bin B1', 'Bin C1', 'Bin D1'],
-        ['Bin A2', 'Bin B2', 'Bin C2', 'Bin D2'],
-        ['Bin A3', 'Bin B3', 'Bin C3', 'Bin D3']
-      ];
+        if (editMode) {
+          const plusX_X = marginX + gridCols * (blockW + 10 * zoomLevel) + 20 * zoomLevel;
+          const plusX_Y = marginY + (gridRows/2) * (blockH + 10 * zoomLevel);
+          const plusY_X = marginX + (gridCols/2) * (blockW + 10 * zoomLevel);
+          const plusY_Y = marginY + gridRows * (blockH + 10 * zoomLevel) + 20 * zoomLevel;
 
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const x = marginX + c * (blockW + 30 * zoomLevel);
-          const y = marginY + r * (blockH + 30 * zoomLevel);
-          if (mouseX >= x && mouseX <= x + blockW && mouseY >= y && mouseY <= y + blockH) {
-            foundZone = zones[r][c];
-            setTooltipPos({
-              x: e.clientX - rect.left,
-              y: e.clientY - rect.top - 30,
-              visible: true,
-              text: `${foundZone} (Click to select)`
-            });
-            break;
+          if (Math.hypot(mouseX - plusX_X, mouseY - plusX_Y) < 20 * zoomLevel) foundAction = 'expandX';
+          else if (Math.hypot(mouseX - plusY_X, mouseY - plusY_Y) < 20 * zoomLevel) foundAction = 'expandY';
+        }
+
+        if (!foundAction) {
+          for (let y = 0; y < gridRows; y++) {
+            for (let x = 0; x < gridCols; x++) {
+              const px = marginX + x * (blockW + 10 * zoomLevel);
+              const py = marginY + y * (blockH + 10 * zoomLevel);
+              
+              if (mouseX >= px && mouseX <= px + blockW && mouseY >= py && mouseY <= py + blockH) {
+                const exists = stacks.some(s => s.x === x && s.y === y && s.z === activeZ);
+                const valid = activeZ === 0 || stacks.some(s => s.x === x && s.y === y && s.z === activeZ - 1);
+                foundCell = { x, y, z: activeZ, exists, valid };
+                
+                tooltip = {
+                  x: e.clientX - rect.left,
+                  y: e.clientY - rect.top - 30,
+                  visible: true,
+                  text: editMode 
+                    ? (exists ? 'Click to Delete' : (valid ? 'Click to Add' : 'Cannot place here'))
+                    : (exists ? `Bin ${String.fromCharCode(65 + x)}${y + 1}` : 'Empty Space')
+                };
+                break;
+              }
+            }
+            if (foundCell) break;
           }
         }
-      }
     }
 
-    setHoveredZone(foundZone);
-    if (!foundZone) {
-      setTooltipPos(prev => ({ ...prev, visible: false }));
+    if (foundAction) {
+      tooltip = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top - 30,
+        visible: true,
+        text: `Expand ${foundAction === 'expandX' ? 'Columns' : 'Rows'}`
+      };
     }
+
+    setHoveredCell(foundCell);
+    setHoveredAction(foundAction);
+    setTooltipPos(tooltip);
   };
 
   const handleMouseUp = () => {
@@ -239,10 +359,29 @@ export default function WarehouseHeatmap3D() {
   };
 
   const handleCanvasClick = (e) => {
-    if (!hoveredZone) return;
-    const targetNode = nodes.find(n => n.zone === hoveredZone) || nodes[0];
-    if (targetNode) {
-      setSelectedNodeId(targetNode.id);
+    if (editMode && hoveredAction) {
+      if (hoveredAction === 'expandX') setGridCols(c => c + 1);
+      if (hoveredAction === 'expandY') setGridRows(r => r + 1);
+      return;
+    }
+
+    if (!hoveredCell) return;
+    
+    if (editMode) {
+      if (hoveredCell.exists) {
+        setStacks(prev => prev.filter(s => !(s.x === hoveredCell.x && s.y === hoveredCell.y && s.z >= hoveredCell.z)));
+      } else if (hoveredCell.valid) {
+        const zone = `Bin ${String.fromCharCode(65 + hoveredCell.x)}${hoveredCell.y + 1}${hoveredCell.z > 0 ? `-L${hoveredCell.z}` : ''}`;
+        setStacks(prev => [...prev, { x: hoveredCell.x, y: hoveredCell.y, z: hoveredCell.z, zone }]);
+      }
+    } else {
+      if (hoveredCell.exists) {
+        const stk = stacks.find(s => s.x === hoveredCell.x && s.y === hoveredCell.y && s.z === hoveredCell.z);
+        if (stk) {
+          const targetNode = nodes.find(n => n.zone === stk.zone) || nodes[0];
+          if (targetNode) setSelectedNodeId(targetNode.id);
+        }
+      }
     }
   };
 
@@ -260,11 +399,11 @@ export default function WarehouseHeatmap3D() {
     setZoomLevel(1);
     setRotationAngle(0);
     setViewMode('isometric');
+    setActiveZ(0);
   };
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto selection:bg-grain-500 selection:text-white">
-      {/* Top Header & View Controls */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-paper p-4 rounded-xl border border-ink-100 shadow-card">
         <div>
           <h2 className="font-display text-lg font-bold text-ink-900 flex items-center space-x-2">
@@ -272,17 +411,26 @@ export default function WarehouseHeatmap3D() {
             <span>Interactive 3D Rice Stack Map</span>
           </h2>
           <p className="text-xs text-ink-400 mt-0.5">
-            Click &amp; drag anywhere on the 3D map to pan/move. Click any stack to inspect readings.
+            Click &amp; drag to pan. Use Edit Mode to add/remove bins or expand floor size.
           </p>
         </div>
 
-        {/* View Mode & Zoom Controls */}
         <div className="flex items-center space-x-3">
+          <button
+            onClick={handleToggleEditMode}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md font-bold text-xs transition border cursor-pointer ${
+              editMode ? 'bg-grain-500 text-white border-grain-500' : 'bg-husk text-ink-700 border-ink-200 hover:bg-grain-50'
+            }`}
+          >
+            {editMode ? <MousePointer2 className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
+            <span>{editMode ? 'Exit Edit Mode' : 'Edit Layout'}</span>
+          </button>
+
           <div className="flex bg-husk p-1 rounded-md border border-ink-100 text-xs">
             <button
               onClick={() => setViewMode('isometric')}
               className={`px-3 py-1.5 rounded-md font-medium transition cursor-pointer ${
-                viewMode === 'isometric' ? 'bg-grain-500 text-white font-bold' : 'text-ink-600 hover:text-ink-900'
+                viewMode === 'isometric' ? 'bg-ink-800 text-white font-bold' : 'text-ink-600 hover:text-ink-900'
               }`}
             >
               3D View
@@ -290,7 +438,7 @@ export default function WarehouseHeatmap3D() {
             <button
               onClick={() => setViewMode('topdown')}
               className={`px-3 py-1.5 rounded-md font-medium transition cursor-pointer ${
-                viewMode === 'topdown' ? 'bg-grain-500 text-white font-bold' : 'text-ink-600 hover:text-ink-900'
+                viewMode === 'topdown' ? 'bg-ink-800 text-white font-bold' : 'text-ink-600 hover:text-ink-900'
               }`}
             >
               Flat 2D View
@@ -301,7 +449,6 @@ export default function WarehouseHeatmap3D() {
             <button 
               onClick={() => setZoomLevel(prev => Math.min(prev + 0.2, 1.8))} 
               className="p-1.5 text-ink-600 hover:text-ink-900 cursor-pointer"
-              title="Zoom In"
             >
               <ZoomIn className="w-4 h-4" />
             </button>
@@ -309,7 +456,6 @@ export default function WarehouseHeatmap3D() {
             <button 
               onClick={() => setZoomLevel(prev => Math.max(prev - 0.2, 0.6))} 
               className="p-1.5 text-ink-600 hover:text-ink-900 cursor-pointer"
-              title="Zoom Out"
             >
               <ZoomOut className="w-4 h-4" />
             </button>
@@ -317,7 +463,6 @@ export default function WarehouseHeatmap3D() {
             <button 
               onClick={() => setRotationAngle(prev => (prev + 90) % 360)} 
               className="p-1.5 text-ink-600 hover:text-ink-900 border-l border-ink-100 ml-1 cursor-pointer flex items-center space-x-1"
-              title="Rotate 3D Floor 90°"
             >
               <RotateCw className="w-3.5 h-3.5" />
             </button>
@@ -325,7 +470,6 @@ export default function WarehouseHeatmap3D() {
             <button 
               onClick={handleResetView} 
               className="p-1.5 text-ink-600 hover:text-ink-900 border-l border-ink-100 ml-1 cursor-pointer"
-              title="Reset View Position"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
@@ -333,10 +477,86 @@ export default function WarehouseHeatmap3D() {
         </div>
       </div>
 
-      {/* Main 3D Canvas + Side Detail Panel Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 3D Viewport Canvas (2 Cols) */}
         <div className="lg:col-span-2 bg-paper border border-ink-100 rounded-xl p-4 relative overflow-hidden flex flex-col justify-between min-h-[460px] shadow-card">
+          
+          {showSavePrompt && (
+            <div className="absolute inset-0 z-50 bg-ink-900/40 backdrop-blur-[2px] flex items-center justify-center">
+              <div className="bg-paper p-6 rounded-xl border border-ink-200 shadow-2xl max-w-sm w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
+                <h3 className="font-display font-bold text-lg text-ink-900 mb-2">Save Layout Changes?</h3>
+                <p className="text-sm text-ink-600 mb-6">
+                  You have unsaved modifications to the floor layout. Do you want to save or discard these changes?
+                </p>
+                <div className="flex items-center justify-end space-x-3">
+                  <button 
+                    onClick={() => {
+                      setStacks(initialLayout.stacks);
+                      setGridCols(initialLayout.cols);
+                      setGridRows(initialLayout.rows);
+                      setShowSavePrompt(false);
+                      setEditMode(false);
+                    }}
+                    className="px-4 py-2 text-sm font-bold text-ink-600 hover:text-ink-900 bg-husk hover:bg-ink-100 rounded-md transition cursor-pointer"
+                  >
+                    Discard Changes
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setShowSavePrompt(false);
+                      setEditMode(false);
+                    }}
+                    className="px-4 py-2 text-sm font-bold bg-grain-500 text-white rounded-md hover:bg-grain-600 transition shadow-sm cursor-pointer"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="absolute top-6 left-6 z-10 flex flex-col items-center">
+            <span className="text-[9px] font-bold text-ink-400 mb-1 tracking-wider drop-shadow-sm">Z-PLANE</span>
+            <button 
+              onClick={() => setActiveZ(z => z + 1)}
+              className="p-1 hover:bg-grain-100 text-ink-600 hover:text-grain-700 rounded cursor-pointer transition drop-shadow"
+            >
+              <ChevronUp className="w-5 h-5" />
+            </button>
+            <span className="font-mono text-sm font-bold text-ink-900 my-1 drop-shadow-sm">
+              Lvl {activeZ}
+            </span>
+            <button 
+              onClick={() => setActiveZ(z => Math.max(0, z - 1))}
+              className="p-1 hover:bg-grain-100 text-ink-600 hover:text-grain-700 rounded cursor-pointer transition drop-shadow"
+            >
+              <ChevronDown className="w-5 h-5" />
+            </button>
+          </div>
+
+          {editMode && (
+            <div className="absolute bottom-4 right-4 z-10 bg-paper/90 backdrop-blur-sm border border-ink-200 rounded-lg shadow-card p-3 flex flex-col gap-2">
+              <span className="text-xs font-bold text-ink-900">Grid Dimensions</span>
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col">
+                  <label className="text-[10px] text-ink-400 font-mono">COLS (X)</label>
+                  <div className="flex items-center border border-ink-200 rounded bg-paper">
+                     <button onClick={() => setGridCols(c => Math.max(1, c - 1))} className="px-2 hover:bg-husk cursor-pointer text-ink-600 font-bold">-</button>
+                     <input type="number" value={gridCols} onChange={e => setGridCols(Math.max(1, parseInt(e.target.value)||1))} className="w-10 text-center text-xs outline-none bg-transparent font-mono" />
+                     <button onClick={() => setGridCols(c => c + 1)} className="px-2 hover:bg-husk cursor-pointer text-ink-600 font-bold">+</button>
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <label className="text-[10px] text-ink-400 font-mono">ROWS (Y)</label>
+                  <div className="flex items-center border border-ink-200 rounded bg-paper">
+                     <button onClick={() => setGridRows(r => Math.max(1, r - 1))} className="px-2 hover:bg-husk cursor-pointer text-ink-600 font-bold">-</button>
+                     <input type="number" value={gridRows} onChange={e => setGridRows(Math.max(1, parseInt(e.target.value)||1))} className="w-10 text-center text-xs outline-none bg-transparent font-mono" />
+                     <button onClick={() => setGridRows(r => r + 1)} className="px-2 hover:bg-husk cursor-pointer text-ink-600 font-bold">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <canvas 
             ref={canvasRef} 
             width={720} 
@@ -346,11 +566,10 @@ export default function WarehouseHeatmap3D() {
             onMouseUp={handleMouseUp}
             onClick={handleCanvasClick}
             onWheel={handleWheel}
-            onMouseLeave={() => { setIsDragging(false); setHoveredZone(null); setTooltipPos(prev => ({ ...prev, visible: false })); }}
-            className={`w-full h-full rounded-lg border border-ink-100 ${isDragging ? 'cursor-grabbing' : hoveredZone ? 'cursor-pointer' : 'cursor-grab'}`}
+            onMouseLeave={() => { setIsDragging(false); setHoveredCell(null); setHoveredAction(null); setTooltipPos(prev => ({ ...prev, visible: false })); }}
+            className={`w-full h-full rounded-lg border border-ink-100 ${isDragging ? 'cursor-grabbing' : (hoveredCell || hoveredAction) ? 'cursor-pointer' : 'cursor-grab'}`}
           />
 
-          {/* Canvas Hover Floating Tooltip */}
           {tooltipPos.visible && (
             <div 
               className="absolute z-20 bg-ink-900 text-white text-[11px] font-mono font-bold px-2.5 py-1 rounded shadow-lg pointer-events-none transform -translate-x-1/2"
@@ -360,7 +579,6 @@ export default function WarehouseHeatmap3D() {
             </div>
           )}
 
-          {/* Legend Overlay & Movement Guide */}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs bg-husk p-3 rounded-lg border border-ink-100">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-1.5">
@@ -379,12 +597,11 @@ export default function WarehouseHeatmap3D() {
 
             <span className="text-[11px] font-mono text-grain-700 font-semibold flex items-center space-x-1">
               <Move className="w-3.5 h-3.5 text-grain-500" />
-              <span>Click &amp; Drag to Move Floor &bull; Scroll to Zoom</span>
+              <span>{editMode ? 'Edit Mode Active: Click cells to Add/Remove Bins or use arrows to expand grid' : 'Click & Drag to Move Floor • Scroll to Zoom'}</span>
             </span>
           </div>
         </div>
 
-        {/* Selected Sensor Node Detail Sidecard */}
         <div className="bg-paper border border-ink-100 rounded-xl p-5 space-y-5 shadow-card">
           <div className="flex items-center justify-between border-b border-ink-100 pb-3">
             <div>
@@ -393,7 +610,6 @@ export default function WarehouseHeatmap3D() {
               </span>
               <h3 className="font-display text-base font-bold text-ink-900">{selectedNode.name}</h3>
             </div>
-
             <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
               selectedNode.status === 'Critical' ? 'bg-critical/10 text-critical border border-critical/30' :
               selectedNode.status === 'Moderate' ? 'bg-moderate/10 text-moderate border border-moderate/30' :
@@ -403,7 +619,6 @@ export default function WarehouseHeatmap3D() {
             </span>
           </div>
 
-          {/* Core Metric Grid */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-husk p-3 rounded-lg border border-ink-100">
               <div className="flex items-center space-x-1.5 text-ink-400 text-xs mb-1">
@@ -438,7 +653,6 @@ export default function WarehouseHeatmap3D() {
             </div>
           </div>
 
-          {/* Environmental & Bag Depth Info in Plain English */}
           <div className="space-y-2 text-xs bg-husk p-3.5 rounded-lg border border-ink-100 font-mono">
             <div className="flex justify-between py-1 border-b border-ink-100">
               <span className="text-ink-400">Sensor Insertion Depth:</span>
@@ -460,7 +674,6 @@ export default function WarehouseHeatmap3D() {
             </div>
           </div>
 
-          {/* Select Other Nodes List */}
           <div>
             <label className="font-mono text-[11px] font-semibold text-ink-400 uppercase tracking-wider block mb-2">
               Quick Select Bin Stack:
@@ -489,38 +702,35 @@ export default function WarehouseHeatmap3D() {
   );
 }
 
-// Isometric Projection Math Helper
-function isoToScreen(gx, gy, gz, originX, originY, scale, panX = 0, panY = 0, rotDeg = 0) {
-  let rx = gx;
-  let ry = gy;
+function isoToScreen(x, y, z, originX, originY, scale, panX = 0, panY = 0, rotDeg = 0) {
+  let rx = x;
+  let ry = y;
   if (rotDeg === 90) {
-    rx = -gy; ry = gx;
+    rx = -y; ry = x;
   } else if (rotDeg === 180) {
-    rx = -gx; ry = -gy;
+    rx = -x; ry = -y;
   } else if (rotDeg === 270) {
-    rx = gy; ry = -gx;
+    rx = y; ry = -x;
   }
 
-  const tileW = 32 * scale;
-  const tileH = 16 * scale;
+  const tileW = 34 * scale;
+  const tileH = 17 * scale;
   const screenX = originX + panX + (rx - ry) * tileW;
-  const screenY = originY + panY + (rx + ry) * tileH - gz * (24 * scale);
+  const screenY = originY + panY + (rx + ry) * tileH - z * (26 * scale);
   return { x: screenX, y: screenY };
 }
 
-// Draw 3D Isometric Block
-function drawIsoBlock(ctx, gx, gy, gz, w, h, depthZ, colors, originX, originY, scale, label, isHighlighted, panX = 0, panY = 0, rotDeg = 0) {
-  const p1 = isoToScreen(gx, gy, gz + depthZ, originX, originY, scale, panX, panY, rotDeg);
-  const p2 = isoToScreen(gx + w, gy, gz + depthZ, originX, originY, scale, panX, panY, rotDeg);
-  const p3 = isoToScreen(gx + w, gy + h, gz + depthZ, originX, originY, scale, panX, panY, rotDeg);
-  const p4 = isoToScreen(gx, gy + h, gz + depthZ, originX, originY, scale, panX, panY, rotDeg);
+function drawIsoBlock(ctx, x, y, z, w, h, depthZ, colors, originX, originY, scale, label, isHighlighted, panX = 0, panY = 0, rotDeg = 0) {
+  const p1 = isoToScreen(x, y, z + depthZ, originX, originY, scale, panX, panY, rotDeg);
+  const p2 = isoToScreen(x + w, y, z + depthZ, originX, originY, scale, panX, panY, rotDeg);
+  const p3 = isoToScreen(x + w, y + h, z + depthZ, originX, originY, scale, panX, panY, rotDeg);
+  const p4 = isoToScreen(x, y + h, z + depthZ, originX, originY, scale, panX, panY, rotDeg);
 
-  const b1 = isoToScreen(gx, gy, gz, originX, originY, scale, panX, panY, rotDeg);
-  const b2 = isoToScreen(gx + w, gy, gz, originX, originY, scale, panX, panY, rotDeg);
-  const b3 = isoToScreen(gx + w, gy + h, gz, originX, originY, scale, panX, panY, rotDeg);
-  const b4 = isoToScreen(gx, gy + h, gz, originX, originY, scale, panX, panY, rotDeg);
+  const b1 = isoToScreen(x, y, z, originX, originY, scale, panX, panY, rotDeg);
+  const b2 = isoToScreen(x + w, y, z, originX, originY, scale, panX, panY, rotDeg);
+  const b3 = isoToScreen(x + w, y + h, z, originX, originY, scale, panX, panY, rotDeg);
+  const b4 = isoToScreen(x, y + h, z, originX, originY, scale, panX, panY, rotDeg);
 
-  // Top Face
   ctx.fillStyle = colors.top;
   ctx.beginPath();
   ctx.moveTo(p1.x, p1.y);
@@ -529,11 +739,10 @@ function drawIsoBlock(ctx, gx, gy, gz, w, h, depthZ, colors, originX, originY, s
   ctx.lineTo(p4.x, p4.y);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = isHighlighted ? '#AC7F35' : '#FFFFFF';
-  ctx.lineWidth = isHighlighted ? 2.5 : 1;
+  ctx.strokeStyle = isHighlighted ? '#3B82F6' : '#FFFFFF';
+  ctx.lineWidth = isHighlighted ? 3 : 1;
   ctx.stroke();
 
-  // Left Face
   ctx.fillStyle = colors.left;
   ctx.beginPath();
   ctx.moveTo(p4.x, p4.y);
@@ -544,7 +753,6 @@ function drawIsoBlock(ctx, gx, gy, gz, w, h, depthZ, colors, originX, originY, s
   ctx.fill();
   ctx.stroke();
 
-  // Right Face
   ctx.fillStyle = colors.right;
   ctx.beginPath();
   ctx.moveTo(p3.x, p3.y);
@@ -555,58 +763,27 @@ function drawIsoBlock(ctx, gx, gy, gz, w, h, depthZ, colors, originX, originY, s
   ctx.fill();
   ctx.stroke();
 
-  // Text label on top face
-  ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 11px Inter, sans-serif';
-  ctx.fillText(label, p1.x + 8, p1.y + 18);
+  if (label) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.fillText(label, p1.x - 4, p1.y + 12);
+  }
 }
 
-// 2D Floorplan rendering
-function stacks2D(ctx, width, height, nodes, selectedNode, hoveredZone, panX = 0, panY = 0, scale = 1) {
-  const cols = 4;
-  const rows = 3;
-  const marginX = 80 + panX;
-  const marginY = 60 + panY;
-  const blockW = ((width - 160) / cols) * scale;
-  const blockH = ((height - 120) / rows) * scale;
+function drawExpandButton(ctx, x, y, isHovered, zoom) {
+  const r = 16 * zoom;
+  ctx.fillStyle = isHovered ? '#1E8E5A' : '#E7E4DE';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  
+  ctx.strokeStyle = isHovered ? '#125B37' : '#C1BCB1';
+  ctx.lineWidth = 2 * zoom;
+  ctx.stroke();
 
-  const zones = [
-    ['Bin A1', 'Bin B1', 'Bin C1', 'Bin D1'],
-    ['Bin A2', 'Bin B2', 'Bin C2', 'Bin D2'],
-    ['Bin A3', 'Bin B3', 'Bin C3', 'Bin D3']
-  ];
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const zName = zones[r][c];
-      const zNodes = nodes.filter(n => n.zone === zName);
-      const isCrit = zNodes.some(n => n.status === 'Critical');
-      const isMod = zNodes.some(n => n.status === 'Moderate');
-      const isSelected = selectedNode.zone === zName;
-      const isHovered = hoveredZone === zName;
-
-      const x = marginX + c * (blockW + 30 * scale);
-      const y = marginY + r * (blockH + 30 * scale);
-
-      ctx.fillStyle = isSelected 
-        ? 'rgba(172, 127, 53, 0.25)' 
-        : isCrit ? 'rgba(192, 57, 43, 0.15)' : isMod ? 'rgba(201, 122, 31, 0.15)' : 'rgba(30, 142, 90, 0.15)';
-      ctx.strokeStyle = isSelected 
-        ? '#AC7F35' 
-        : isHovered ? '#6B4C1F' : isCrit ? '#C0392B' : isMod ? '#C97A1F' : '#1E8E5A';
-      ctx.lineWidth = isSelected || isHovered ? 2.5 : 1.5;
-
-      ctx.fillRect(x, y, blockW, blockH);
-      ctx.strokeRect(x, y, blockW, blockH);
-
-      ctx.fillStyle = '#1A1712';
-      ctx.font = 'bold 13px Inter, sans-serif';
-      ctx.fillText(zName, x + 15, y + 25);
-
-      const maxLevel = Math.max(...zNodes.map(n => n.infestationLevel), 0);
-      ctx.font = '11px Inter, sans-serif';
-      ctx.fillStyle = isCrit ? '#C0392B' : isMod ? '#C97A1F' : '#1E8E5A';
-      ctx.fillText(`Pests: ${maxLevel}%`, x + 15, y + 45);
-    }
-  }
+  ctx.fillStyle = isHovered ? '#FFFFFF' : '#666666';
+  ctx.font = `bold ${18 * zoom}px Inter, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('+', x, y + (1 * zoom));
 }

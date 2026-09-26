@@ -17,7 +17,7 @@ export default function Sidebar() {
     { id: 'heatmap', label: 'Rice Floor Map', icon: Map },
     { id: 'devices', label: 'Sensors & Hardware', icon: Cpu },
     { id: 'fft', label: 'Pest Audio Scanner', icon: Volume2 },
-    { id: 'alerts', label: 'Pest Alerts', icon: Bell },
+    { id: 'alerts', label: 'Notifications', icon: Bell },
     { id: 'analytics', label: '30-Day Reports', icon: BarChart3 },
   ];
 
