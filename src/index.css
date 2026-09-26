@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #FFFFFF;
+  --color-husk: #F7F5F0;
+  
+  --color-grain-50: #FBF7ED;
+  --color-grain-100: #F3E9CE;
+  --color-grain-200: #E6D3A1;
+  --color-grain-300: #D6B876;
+  --color-grain-400: #C49A4E;
+  --color-grain-500: #AC7F35;
+  --color-grain-600: #8C6529;
+  --color-grain-700: #6B4C1F;
+  --color-grain-800: #4A3416;
+  --color-grain-900: #2B1E0D;
+
+  --color-ink-50: #F5F4F2;
+  --color-ink-100: #E7E4DE;
+  --color-ink-400: #736A5E;
+  --color-ink-600: #4A4238;
+  --color-ink-800: #2A241D;
+  --color-ink-900: #1A1712;
+
+  --color-safe: #1E8E5A;
+  --color-moderate: #C97A1F;
+  --color-critical: #C0392B;
+
+  --shadow-card: 0 1px 2px rgba(26,23,18,0.04), 0 4px 16px rgba(26,23,18,0.05);
+}
+
+@layer base {
+  body {
+    background-color: #F7F5F0;
+    color: #1A1712;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+.bg-weave {
+  background-image: repeating-linear-gradient(45deg, rgba(172,127,53,0.06) 0, rgba(172,127,53,0.06) 1px, transparent 1px, transparent 8px);
+}
+
+.pulse-dot {
+  animation: pulse-dot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.9); }
+}
+
+/* Custom subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F7F5F0;
+}
+::-webkit-scrollbar-thumb {
+  background: #D6B876;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #AC7F35;
+}
