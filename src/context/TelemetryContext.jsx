@@ -125,6 +125,11 @@ export function TelemetryProvider({ children, user }) {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, zone: newZone } : n));
   };
 
+  // Change probe insertion depth (cm) for any hardware sensor node
+  const changeNodeDepth = (nodeId, newDepth) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, depthCm: parseInt(newDepth, 10) || 0 } : n));
+  };
+
   // WebSerial API: Connect physical Seeed Studio XIAO ESP32-S3 via USB COM port (Admin Only)
   const connectPhysicalHardware = async () => {
     if (!isAdmin) {
@@ -144,15 +149,43 @@ export function TelemetryProvider({ children, user }) {
       setIsHardwareConnected(true);
 
       // Auto-activate DEV-003 node on hardware connect in Safe initial state (0% Infestation)
-      setNodes(prev => prev.map(n => n.id === 'DEV-003' ? {
-        ...n,
-        status: "Safe",
-        infestationLevel: 0,
-        peakFreqHz: 0,
-        weevilCountEst: 0,
-        amplitudeDb: -90,
-        lastSeen: "Just now (Hardware Connected - Insert probe in rice)"
-      } : n));
+      // Auto-activate DEV-003 node on hardware connect in Safe initial state (0% Infestation)
+      setNodes(prev => {
+        const exists = prev.some(n => n.id === 'DEV-003');
+        if (exists) {
+          return prev.map(n => n.id === 'DEV-003' ? {
+            ...n,
+            status: "Safe",
+            infestationLevel: 0,
+            peakFreqHz: 0,
+            weevilCountEst: 0,
+            amplitudeDb: -90,
+            depthCm: n.depthCm > 0 ? n.depthCm : 45,
+            lastSeen: "Just now (Hardware Connected - Insert probe in rice)"
+          } : n);
+        }
+        return [...prev, {
+          id: "DEV-003",
+          name: "Seeed XIAO ESP32-S3 Physical Sensor Node",
+          zone: "Bin B1",
+          stackId: "stack-b1",
+          gridX: 1,
+          gridY: 0,
+          depthCm: 45,
+          battery: 94,
+          rssi: -65,
+          snr: 9.8,
+          status: "Safe",
+          infestationLevel: 0,
+          peakFreqHz: 0,
+          amplitudeDb: -90,
+          temperature: 0,
+          humidity: 0,
+          powerMode: "Active (30s)",
+          lastSeen: "Just now (Hardware Connected - Insert probe in rice)",
+          weevilCountEst: 0
+        }];
+      });
 
       const textDecoder = new TextDecoderStream();
       port.readable.pipeTo(textDecoder.writable);
@@ -170,7 +203,16 @@ export function TelemetryProvider({ children, user }) {
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (trimmed.includes("Transmitting") || trimmed.includes("Peak:") || trimmed.includes("Status:") || trimmed.includes("@")) {
+          if (
+            trimmed.includes("Transmitting") || 
+            trimmed.includes("Peak:") || 
+            trimmed.includes("Status:") || 
+            trimmed.includes("@") ||
+            trimmed.includes("DHT11") ||
+            trimmed.includes("Temp") ||
+            trimmed.includes("Hum") ||
+            trimmed.includes("Depth")
+          ) {
             parseSerialTelemetry(trimmed);
           }
         }
@@ -187,16 +229,23 @@ export function TelemetryProvider({ children, user }) {
     const dbMatch = line.match(/@\s*(-?\d+)\s*dBFS/i);
     const statusMatch = line.match(/Status:\s*(\d+)/i);
     const batMatch = line.match(/(?:Bat|Battery):\s*(\d+)%/i);
+<<<<<<< HEAD
     const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d.]+)/i);
     const humMatch = line.match(/(?:Hum|Humidity):\s*([\d.]+)/i);
+=======
+    const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d\.]+)/i);
+    const humMatch = line.match(/(?:Hum|Humidity):\s*([\d\.]+)/i);
+    const depthMatch = line.match(/(?:Depth):\s*(\d+)/i);
+>>>>>>> ea097a0 (Update firmware & WebSerial telemetry parser for live DHT11 temperature, air moisture, and probe depth sensing)
 
-    if (freqMatch || dbMatch || statusMatch || batMatch || tempMatch || humMatch) {
+    if (freqMatch || dbMatch || statusMatch || batMatch || tempMatch || humMatch || depthMatch) {
       const peakFreqHz = freqMatch ? parseInt(freqMatch[1], 10) : 0;
       const amplitudeDb = dbMatch ? parseInt(dbMatch[1], 10) : -90;
       const statusVal = statusMatch ? parseInt(statusMatch[1], 10) : -1;
       const parsedBat = batMatch ? parseInt(batMatch[1], 10) : null;
       const parsedTemp = tempMatch ? parseFloat(tempMatch[1]) : null;
       const parsedHum = humMatch ? parseFloat(humMatch[1]) : null;
+      const parsedDepth = depthMatch ? parseInt(depthMatch[1], 10) : null;
       
       // Bio-Acoustic Grain Insertion & High Sensitivity Filter:
       // Real INMP441 MEMS I2S microphone 24-bit FFT energy for rice grain scratching / Bukbok clicking sits between -85 dBFS and -55 dBFS.
@@ -225,6 +274,7 @@ export function TelemetryProvider({ children, user }) {
         ...(parsedBat !== null && { battery: parsedBat, batteryPct: parsedBat }),
         ...(parsedTemp !== null && { temperature: parsedTemp }),
         ...(parsedHum !== null && { humidity: parsedHum }),
+        ...(parsedDepth !== null && { depthCm: parsedDepth }),
         lastSeen: `Just now (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})`
       };
 
@@ -379,6 +429,7 @@ export function TelemetryProvider({ children, user }) {
       activeNodes,
       setNodes,
       changeNodeZone,
+      changeNodeDepth,
       selectedNode,
       setSelectedNodeId,
       selectedSpectrum,
