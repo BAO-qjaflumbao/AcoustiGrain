@@ -139,7 +139,7 @@ export default function DeviceFleetPanel() {
 
                     {/* Sack Depth */}
                     <td className="py-3.5 px-4 text-ink-600 font-mono">
-                      {node.depthCm > 0 ? `${node.depthCm} cm deep` : 'Gateway Base'}
+                      {node.depthCm > 0 ? `${node.depthCm} cm deep` : node.id === 'DEV-015' ? 'Gateway Base' : '0 cm (Awaiting probe)'}
                     </td>
 
                     {/* Battery */}
@@ -150,19 +150,19 @@ export default function DeviceFleetPanel() {
                             className={`h-full rounded-full ${
                               node.battery > 50 ? 'bg-safe' : node.battery > 20 ? 'bg-moderate' : 'bg-critical'
                             }`}
-                            style={{ width: `${node.battery}%` }}
+                            style={{ width: `${node.battery || 0}%` }}
                           />
                         </div>
-                        <span className="font-bold text-xs font-mono">{node.battery}%</span>
+                        <span className="font-bold text-xs font-mono">{node.battery || 0}%</span>
                       </div>
                     </td>
 
                     {/* Temp & Humidity */}
                     <td className="py-3.5 px-4 font-mono text-xs">
                       <div className="flex items-center space-x-1.5 text-ink-800">
-                        <span className="font-bold text-ink-900">{node.temperature || 31.8}°C</span>
+                        <span className="font-bold text-ink-900">{node.temperature ?? 0}°C</span>
                         <span className="text-ink-400">/</span>
-                        <span className="font-semibold text-grain-600">{node.humidity || 62.5}% RH</span>
+                        <span className="font-semibold text-grain-600">{node.humidity ?? 0}% RH</span>
                       </div>
                     </td>
 

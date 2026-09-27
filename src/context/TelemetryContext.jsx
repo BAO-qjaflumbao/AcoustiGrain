@@ -4,16 +4,8 @@ import { subscribeToRealtimeNodes, pushNodeTelemetryToFirebase, syncAllNodesToFi
 
 const TelemetryContext = createContext(null);
 
-// Completely blank initial node state before sensor telemetry is received
-export const BLANK_NODES = INITIAL_NODES.map(node => ({
-  ...node,
-  status: "Safe",
-  infestationLevel: 0,
-  peakFreqHz: 0,
-  amplitudeDb: -90,
-  weevilCountEst: 0,
-  lastSeen: "Awaiting sensor data"
-}));
+// Completely blank initial node state — sensors pop up ONLY when physically connected or transmitting telemetry
+export const BLANK_NODES = [];
 
 // Load saved sensor node telemetry from localStorage or start blank
 const loadSavedNodes = () => {
@@ -22,27 +14,13 @@ const loadSavedNodes = () => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Sanitize DEV-003 back to Safe if open-air noise was previously saved
-        return parsed.map(n => {
-          if (n.id === "DEV-003" && n.status === "Safe" && n.amplitudeDb <= -88) {
-            return {
-              ...n,
-              status: "Safe",
-              infestationLevel: 0,
-              peakFreqHz: 0,
-              amplitudeDb: -90,
-              weevilCountEst: 0,
-              lastSeen: "Awaiting insertion in rice"
-            };
-          }
-          return n;
-        });
+        return parsed;
       }
     }
   } catch (e) {
     console.warn("Error loading saved telemetry:", e);
   }
-  return BLANK_NODES;
+  return [];
 };
 
 // Load saved alerts from localStorage or start blank
@@ -100,15 +78,31 @@ export function TelemetryProvider({ children, user }) {
   useEffect(() => {
     const unsubscribe = subscribeToRealtimeNodes((cloudNodes) => {
       if (cloudNodes && typeof cloudNodes === 'object') {
-        setNodes(prev => prev.map(node => {
-          if (cloudNodes[node.id]) {
-            return {
-              ...node,
-              ...cloudNodes[node.id]
-            };
-          }
-          return node;
-        }));
+        setNodes(prev => {
+          const updated = [...prev];
+          Object.keys(cloudNodes).forEach(id => {
+            const index = updated.findIndex(n => n.id === id);
+            if (index >= 0) {
+              updated[index] = { ...updated[index], ...cloudNodes[id] };
+            } else {
+              updated.push({
+                id,
+                name: cloudNodes[id].name || `Sensor Node ${id}`,
+                zone: cloudNodes[id].zone || "Bin B1",
+                status: "Safe",
+                infestationLevel: 0,
+                peakFreqHz: 0,
+                amplitudeDb: -90,
+                temperature: 0,
+                humidity: 0,
+                depthCm: 0,
+                battery: 0,
+                ...cloudNodes[id]
+              });
+            }
+          });
+          return updated;
+        });
       }
     });
 
@@ -139,15 +133,45 @@ export function TelemetryProvider({ children, user }) {
       setIsHardwareConnected(true);
 
       // Auto-activate DEV-003 node on hardware connect in Safe initial state (0% Infestation)
-      setNodes(prev => prev.map(n => n.id === 'DEV-003' ? {
-        ...n,
-        status: "Safe",
-        infestationLevel: 0,
-        peakFreqHz: 0,
-        weevilCountEst: 0,
-        amplitudeDb: -90,
-        lastSeen: "Just now (Hardware Connected - Insert probe in rice)"
-      } : n));
+      setNodes(prev => {
+        const exists = prev.some(n => n.id === 'DEV-003');
+        if (exists) {
+          return prev.map(n => n.id === 'DEV-003' ? {
+            ...n,
+            status: "Safe",
+            infestationLevel: 0,
+            peakFreqHz: 0,
+            weevilCountEst: 0,
+            amplitudeDb: -90,
+            temperature: 0,
+            humidity: 0,
+            depthCm: 0,
+            battery: 0,
+            lastSeen: "Just now (Hardware Connected - Insert probe in rice)"
+          } : n);
+        }
+        return [...prev, {
+          id: "DEV-003",
+          name: "Seeed XIAO ESP32-S3 Physical Sensor Node",
+          zone: "Bin B1",
+          stackId: "stack-b1",
+          gridX: 1,
+          gridY: 0,
+          depthCm: 0,
+          battery: 0,
+          rssi: -65,
+          snr: 9.8,
+          status: "Safe",
+          infestationLevel: 0,
+          peakFreqHz: 0,
+          amplitudeDb: -90,
+          temperature: 0,
+          humidity: 0,
+          powerMode: "Active (30s)",
+          lastSeen: "Just now (Hardware Connected - Insert probe in rice)",
+          weevilCountEst: 0
+        }];
+      });
 
       const textDecoder = new TextDecoderStream();
       port.readable.pipeTo(textDecoder.writable);
@@ -344,27 +368,36 @@ export function TelemetryProvider({ children, user }) {
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
   };
 
-  // Dynamically compute active connected nodes ONLY (no fake 15 active nodes)
-  const activeNodes = nodes.filter(n => 
-    n.id !== "DEV-015" && (
-      n.infestationLevel > 0 || 
-      n.peakFreqHz > 0 || 
-      (n.lastSeen && n.lastSeen.toLowerCase().includes('just now')) ||
-      (n.id === "DEV-003" && isHardwareConnected)
-    )
-  );
+  // Purely live connected physical sensor nodes ONLY (no static dummy nodes)
+  const activeNodes = nodes;
 
-  const selectedNode = nodes.find(n => n.id === selectedNodeId) || activeNodes[0] || nodes[0];
+  const defaultFallbackNode = {
+    id: "DEV-003",
+    name: "Seeed XIAO ESP32-S3 Physical Sensor Node",
+    zone: "Bin B1",
+    status: "Safe",
+    infestationLevel: 0,
+    peakFreqHz: 0,
+    amplitudeDb: -90,
+    weevilCountEst: 0,
+    temperature: 0,
+    humidity: 0,
+    depthCm: 0,
+    battery: 0,
+    lastSeen: "Awaiting hardware sensor connection"
+  };
+
+  const selectedNode = nodes.find(n => n.id === selectedNodeId) || nodes[0] || defaultFallbackNode;
   const selectedSpectrum = generateFFTSpectrum(selectedNode);
 
-  const criticalCount = nodes.filter(n => n.status === "Critical" && n.id !== "DEV-015").length;
+  const criticalCount = nodes.filter(n => n.status === "Critical").length;
   const moderateCount = nodes.filter(n => n.status === "Moderate").length;
-  const safeCount = nodes.filter(n => n.status === "Safe" && n.id !== "DEV-015").length;
-  const activeSensorsCount = activeNodes.length;
+  const safeCount = nodes.filter(n => n.status === "Safe").length;
+  const activeSensorsCount = nodes.length;
   const totalPestDetections = nodes.reduce((acc, curr) => acc + (curr.weevilCountEst || 0), 0);
-  const avgInfestation = Math.round(
-    nodes.filter(n => n.id !== "DEV-015").reduce((acc, curr) => acc + curr.infestationLevel, 0) / 14
-  );
+  const avgInfestation = nodes.length > 0 
+    ? Math.round(nodes.reduce((acc, curr) => acc + (curr.infestationLevel || 0), 0) / nodes.length) 
+    : 0;
 
   return (
     <TelemetryContext.Provider value={{
@@ -395,10 +428,10 @@ export function TelemetryProvider({ children, user }) {
         moderateCount,
         safeCount,
         activeSensorsCount,
-        totalNodes: 14,
+        totalNodes: nodes.length,
         totalPestDetections,
         avgInfestation,
-        qualityRating: Math.max(0, Math.round(100 - avgInfestation * 0.8))
+        qualityRating: nodes.length > 0 ? Math.max(0, Math.round(100 - avgInfestation * 0.8)) : 100
       }
     }}>
       {children}

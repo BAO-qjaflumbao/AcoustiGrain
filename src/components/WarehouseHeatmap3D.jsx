@@ -17,6 +17,7 @@ export default function WarehouseHeatmap3D() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
+  const [selectedZone, setSelectedZone] = useState('Bin A1');
   const [activeZ, setActiveZ] = useState(0);
   const [editMode, setEditMode] = useState(false);
   const [initialLayout, setInitialLayout] = useState({ stacks: [], cols: 6, rows: 5 });
@@ -38,6 +39,12 @@ export default function WarehouseHeatmap3D() {
     }
     return initial;
   });
+
+  useEffect(() => {
+    if (selectedNode && selectedNode.zone) {
+      setSelectedZone(selectedNode.zone);
+    }
+  }, [selectedNode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -90,7 +97,7 @@ export default function WarehouseHeatmap3D() {
           const maxStatus = stkNodes.length > 0 ? (stkNodes.some(n => n.status === 'Critical') ? 'Critical' :
                           stkNodes.some(n => n.status === 'Moderate') ? 'Moderate' : 'Safe') : 'Safe';
                           
-          const isSelectedZone = !editMode && selectedNode.zone === stk.zone;
+          const isSelectedZone = !editMode && selectedZone === stk.zone;
           const isHovered = hoveredCell && hoveredCell.x === stk.x && hoveredCell.y === stk.y && hoveredCell.z === stk.z;
 
           let colors = {
@@ -151,7 +158,7 @@ export default function WarehouseHeatmap3D() {
               const isCrit = stkNodes.some(n => n.status === 'Critical');
               const isMod = stkNodes.some(n => n.status === 'Moderate');
               
-              const isSelected = !editMode && selectedNode.zone === stk.zone;
+              const isSelected = !editMode && selectedZone === stk.zone;
               const isHovered = hoveredCell && hoveredCell.x === x && hoveredCell.y === y && hoveredCell.z === activeZ;
               
               ctx.fillStyle = isCrit ? 'rgba(192, 57, 43, 0.85)' : isMod ? 'rgba(201, 122, 31, 0.85)' : 'rgba(30, 142, 90, 0.85)';
@@ -209,7 +216,7 @@ export default function WarehouseHeatmap3D() {
 
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewMode, zoomLevel, panOffset, rotationAngle, nodes, selectedNode, hoveredCell, hoveredAction, stacks, activeZ, editMode, gridCols, gridRows]);
+  }, [viewMode, zoomLevel, panOffset, rotationAngle, nodes, selectedNode, selectedZone, hoveredCell, hoveredAction, stacks, activeZ, editMode, gridCols, gridRows]);
 
   const handleToggleEditMode = () => {
     if (editMode) {
@@ -378,7 +385,8 @@ export default function WarehouseHeatmap3D() {
       if (hoveredCell.exists) {
         const stk = stacks.find(s => s.x === hoveredCell.x && s.y === hoveredCell.y && s.z === hoveredCell.z);
         if (stk) {
-          const targetNode = nodes.find(n => n.zone === stk.zone) || nodes[0];
+          setSelectedZone(stk.zone);
+          const targetNode = nodes.find(n => n.zone === stk.zone);
           if (targetNode) setSelectedNodeId(targetNode.id);
         }
       }
@@ -400,6 +408,26 @@ export default function WarehouseHeatmap3D() {
     setRotationAngle(0);
     setViewMode('isometric');
     setActiveZ(0);
+  };
+
+  const uniqueZones = Array.from(new Set(stacks.map(s => s.zone))).sort((a, b) => 
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+  );
+
+  const nodeForZone = nodes.find(n => n.zone === selectedZone);
+  const activeSelectedNode = nodeForZone || {
+    id: `STACK-${(selectedZone || 'UNASSIGNED').replace(/\s+/g, '')}`,
+    name: selectedZone ? `Storage ${selectedZone}` : 'Unassigned Stack Bin',
+    zone: selectedZone || 'Unassigned',
+    status: 'Safe',
+    infestationLevel: 0,
+    peakFreqHz: 0,
+    depthCm: 0,
+    temperature: 0,
+    humidity: 0,
+    rssi: 0,
+    weevilCountEst: 0,
+    battery: 0
   };
 
   return (
@@ -606,16 +634,16 @@ export default function WarehouseHeatmap3D() {
           <div className="flex items-center justify-between border-b border-ink-100 pb-3">
             <div>
               <span className="font-mono text-xs text-grain-600 font-bold uppercase tracking-wider">
-                {selectedNode.id} &bull; {selectedNode.zone}
+                {activeSelectedNode.id} &bull; {activeSelectedNode.zone}
               </span>
-              <h3 className="font-display text-base font-bold text-ink-900">{selectedNode.name}</h3>
+              <h3 className="font-display text-base font-bold text-ink-900">{activeSelectedNode.name}</h3>
             </div>
             <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-              selectedNode.status === 'Critical' ? 'bg-critical/10 text-critical border border-critical/30' :
-              selectedNode.status === 'Moderate' ? 'bg-moderate/10 text-moderate border border-moderate/30' :
+              activeSelectedNode.status === 'Critical' ? 'bg-critical/10 text-critical border border-critical/30' :
+              activeSelectedNode.status === 'Moderate' ? 'bg-moderate/10 text-moderate border border-moderate/30' :
               'bg-safe/10 text-safe border border-safe/30'
             }`}>
-              {selectedNode.status === 'Critical' ? 'Action Needed' : selectedNode.status}
+              {activeSelectedNode.status === 'Critical' ? 'Action Needed' : activeSelectedNode.status}
             </span>
           </div>
 
@@ -626,15 +654,15 @@ export default function WarehouseHeatmap3D() {
                 <span>Pest Threat Score</span>
               </div>
               <div className="font-display text-xl font-bold text-ink-900">
-                {selectedNode.infestationLevel}%
+                {activeSelectedNode.infestationLevel}%
               </div>
               <div className="w-full bg-ink-100 h-1.5 rounded-full mt-2 overflow-hidden">
                 <div 
                   className={`h-full rounded-full ${
-                    selectedNode.infestationLevel > 70 ? 'bg-critical' :
-                    selectedNode.infestationLevel > 40 ? 'bg-moderate' : 'bg-safe'
+                    activeSelectedNode.infestationLevel > 70 ? 'bg-critical' :
+                    activeSelectedNode.infestationLevel > 40 ? 'bg-moderate' : 'bg-safe'
                   }`}
-                  style={{ width: `${selectedNode.infestationLevel}%` }}
+                  style={{ width: `${activeSelectedNode.infestationLevel}%` }}
                 />
               </div>
             </div>
@@ -645,10 +673,10 @@ export default function WarehouseHeatmap3D() {
                 <span>Sound Frequency</span>
               </div>
               <div className="font-display text-xl font-bold text-safe">
-                {selectedNode.peakFreqHz > 1000 ? `${(selectedNode.peakFreqHz/1000).toFixed(1)} kHz` : `${selectedNode.peakFreqHz} Hz`}
+                {activeSelectedNode.peakFreqHz > 1000 ? `${(activeSelectedNode.peakFreqHz/1000).toFixed(1)} kHz` : `${activeSelectedNode.peakFreqHz} Hz`}
               </div>
               <div className="text-[10px] text-ink-400 mt-1 font-mono">
-                {selectedNode.peakFreqHz >= 3000 ? 'Bukbok Chewing' : 'Normal Ambient'}
+                {activeSelectedNode.peakFreqHz >= 3000 ? 'Bukbok Chewing' : activeSelectedNode.peakFreqHz > 0 ? 'Normal Ambient' : 'No Acoustic Sensor'}
               </div>
             </div>
           </div>
@@ -656,44 +684,56 @@ export default function WarehouseHeatmap3D() {
           <div className="space-y-2 text-xs bg-husk p-3.5 rounded-lg border border-ink-100 font-mono">
             <div className="flex justify-between py-1 border-b border-ink-100">
               <span className="text-ink-400">Sensor Insertion Depth:</span>
-              <span className="text-ink-800 font-semibold">{selectedNode.depthCm} cm deep in stack</span>
+              <span className="text-ink-800 font-semibold">{activeSelectedNode.depthCm} cm deep in stack</span>
             </div>
             <div className="flex justify-between py-1 border-b border-ink-100">
               <span className="text-ink-400">Temp &amp; Air Moisture:</span>
-              <span className="text-ink-800 font-semibold">{selectedNode.temperature}&deg;C &bull; {selectedNode.humidity}% RH</span>
+              <span className="text-ink-800 font-semibold">{activeSelectedNode.temperature}&deg;C &bull; {activeSelectedNode.humidity}% RH</span>
             </div>
             <div className="flex justify-between py-1 border-b border-ink-100">
               <span className="text-ink-400">Wireless Signal:</span>
-              <span className="text-ink-800 font-semibold">{selectedNode.rssi} dBm (Good)</span>
+              <span className="text-ink-800 font-semibold">{activeSelectedNode.rssi ? `${activeSelectedNode.rssi} dBm (Good)` : '0 dBm (No Hardware Sensor)'}</span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-ink-400">Est. Insects / Sack:</span>
-              <span className={`font-bold ${selectedNode.weevilCountEst > 20 ? 'text-critical' : 'text-ink-800'}`}>
-                ~{selectedNode.weevilCountEst} active / sack
+              <span className={`font-bold ${activeSelectedNode.weevilCountEst > 20 ? 'text-critical' : 'text-ink-800'}`}>
+                ~{activeSelectedNode.weevilCountEst} active / sack
               </span>
             </div>
           </div>
 
           <div>
             <label className="font-mono text-[11px] font-semibold text-ink-400 uppercase tracking-wider block mb-2">
-              Quick Select Bin Stack:
+              Quick Select Bin Stack ({uniqueZones.length} Bins):
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              {nodes.filter(n => n.id !== 'DEV-015').slice(0, 9).map(n => (
-                <button
-                  key={n.id}
-                  onClick={() => setSelectedNodeId(n.id)}
-                  className={`px-2 py-1.5 rounded-md text-xs font-mono font-semibold border text-center transition cursor-pointer ${
-                    n.id === selectedNode.id 
-                      ? 'bg-grain-500 text-white border-grain-500 shadow-card' 
-                      : n.status === 'Critical'
-                      ? 'bg-critical/10 text-critical border-critical/30 hover:bg-critical/20'
-                      : 'bg-husk text-ink-800 border-ink-100 hover:bg-paper'
-                  }`}
-                >
-                  {n.zone}
-                </button>
-              ))}
+            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-1">
+              {uniqueZones.map(zone => {
+                const zoneNode = nodes.find(n => n.zone === zone);
+                const isSelected = selectedZone === zone;
+                const isCrit = zoneNode?.status === 'Critical';
+                const isMod = zoneNode?.status === 'Moderate';
+
+                return (
+                  <button
+                    key={zone}
+                    onClick={() => {
+                      setSelectedZone(zone);
+                      if (zoneNode) setSelectedNodeId(zoneNode.id);
+                    }}
+                    className={`px-2 py-1.5 rounded-md text-xs font-mono font-semibold border text-center transition cursor-pointer ${
+                      isSelected 
+                        ? 'bg-grain-500 text-white border-grain-500 shadow-card' 
+                        : isCrit
+                        ? 'bg-critical/10 text-critical border-critical/30 hover:bg-critical/20'
+                        : isMod
+                        ? 'bg-moderate/10 text-moderate border-moderate/30 hover:bg-moderate/20'
+                        : 'bg-husk text-ink-800 border-ink-100 hover:bg-paper'
+                    }`}
+                  >
+                    {zone}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
