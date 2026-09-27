@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { INITIAL_NODES, generateFFTSpectrum, generateHistoricalTrendData } from '../services/simulatorService';
-import { subscribeToRealtimeNodes, pushNodeTelemetryToFirebase, syncAllNodesToFirebase } from '../services/firebaseService';
+import { 
+  subscribeToRealtimeNodes, 
+  pushNodeTelemetryToFirebase, 
+  syncAllNodesToFirebase,
+  subscribeToRealtimeFloorMap,
+  syncFloorMapToFirebase,
+  subscribeToRealtimeAlerts,
+  pushAlertToFirebase
+} from '../services/firebaseService';
 
 const TelemetryContext = createContext(null);
 
@@ -37,6 +45,21 @@ const loadSavedAlerts = () => {
   return [];
 };
 
+const DEFAULT_FLOOR_MAP = {
+  cols: 6,
+  rows: 5,
+  stacks: (() => {
+    const initial = [];
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < 4; x++) {
+        const zone = `Bin ${String.fromCharCode(65 + x)}${y + 1}`;
+        initial.push({ x, y, z: 0, zone });
+      }
+    }
+    return initial;
+  })()
+};
+
 export function TelemetryProvider({ children, user }) {
   const isAdmin = Boolean(
     user?.role?.toLowerCase().includes('admin') || 
@@ -50,6 +73,8 @@ export function TelemetryProvider({ children, user }) {
   const [isLiveSimulating, setIsLiveSimulating] = useState(false);
   const [activeWarehouse, setActiveWarehouse] = useState("NFA Warehouse #4 - Quezon City Hub");
   const [historicalScenario, setHistoricalScenario] = useState('active');
+
+  const [floorMap, setFloorMap] = useState(DEFAULT_FLOOR_MAP);
 
   // Dynamically compute accurate 30-day historical data synchronized with live nodes
   const historicalData = useMemo(() => {
@@ -70,6 +95,11 @@ export function TelemetryProvider({ children, user }) {
     }
   }, [nodes]);
 
+  // Sync floorMap changes to firebase
+  useEffect(() => {
+    syncFloorMapToFirebase(floorMap);
+  }, [floorMap]);
+
   // Automatically persist alerts to localStorage
   useEffect(() => {
     try {
@@ -79,9 +109,9 @@ export function TelemetryProvider({ children, user }) {
     }
   }, [alerts]);
 
-  // Subscribe to live Firebase Realtime Database node telemetry updates if available
+  // Subscribe to live Firebase Realtime Database
   useEffect(() => {
-    const unsubscribe = subscribeToRealtimeNodes((cloudNodes) => {
+    const unsubscribeNodes = subscribeToRealtimeNodes((cloudNodes) => {
       if (cloudNodes && typeof cloudNodes === 'object') {
         setNodes(prev => {
           const updated = [...prev];
@@ -111,7 +141,23 @@ export function TelemetryProvider({ children, user }) {
       }
     });
 
-    return () => unsubscribe();
+    const unsubscribeFloorMap = subscribeToRealtimeFloorMap((cloudFloorMap) => {
+      if (cloudFloorMap) {
+        setFloorMap(cloudFloorMap);
+      }
+    });
+
+    const unsubscribeAlerts = subscribeToRealtimeAlerts((cloudAlerts) => {
+      if (cloudAlerts) {
+        setAlerts(cloudAlerts);
+      }
+    });
+
+    return () => {
+      unsubscribeNodes();
+      unsubscribeFloorMap();
+      unsubscribeAlerts();
+    };
   }, []);
 
   // Change designated Bin location for any hardware sensor node
@@ -296,7 +342,7 @@ export function TelemetryProvider({ children, user }) {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           acknowledged: false
         };
-        setAlerts(prev => [newAlert, ...prev]);
+        pushAlertToFirebase(newAlert);
       }
     }
   };
@@ -374,7 +420,7 @@ export function TelemetryProvider({ children, user }) {
       acknowledged: false
     };
 
-    setAlerts(prev => [newAlert, ...prev]);
+    pushAlertToFirebase(newAlert);
   };
 
   // Reset telemetry data back to blank initial state (Admin Only)
@@ -388,6 +434,7 @@ export function TelemetryProvider({ children, user }) {
   };
 
   const acknowledgeAlert = (id) => {
+    // If it's a firebase alert, we should update it, but for now we can just update local state or firebase
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, acknowledged: true } : a));
   };
 
@@ -440,6 +487,8 @@ export function TelemetryProvider({ children, user }) {
       setIsLiveSimulating,
       activeWarehouse,
       setActiveWarehouse,
+      floorMap,
+      setFloorMap,
       alerts,
       acknowledgeAlert,
       triggerOutbreak,

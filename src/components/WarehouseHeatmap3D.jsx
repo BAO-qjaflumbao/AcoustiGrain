@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 export default function WarehouseHeatmap3D() {
-  const { nodes, selectedNode, setSelectedNodeId } = useTelemetry();
+  const { nodes, selectedNode, setSelectedNodeId, floorMap, setFloorMap } = useTelemetry();
   const canvasRef = useRef(null);
   
   const [viewMode, setViewMode] = useState('isometric');
@@ -26,19 +26,17 @@ export default function WarehouseHeatmap3D() {
   const [hoveredAction, setHoveredAction] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, visible: false, text: '' });
 
-  const [gridCols, setGridCols] = useState(6);
-  const [gridRows, setGridRows] = useState(5);
+  const [gridCols, setGridCols] = useState(floorMap?.cols || 6);
+  const [gridRows, setGridRows] = useState(floorMap?.rows || 5);
+  const [stacks, setStacks] = useState(floorMap?.stacks || []);
 
-  const [stacks, setStacks] = useState(() => {
-    const initial = [];
-    for (let y = 0; y < 3; y++) {
-      for (let x = 0; x < 4; x++) {
-        const zone = `Bin ${String.fromCharCode(65 + x)}${y + 1}`;
-        initial.push({ x, y, z: 0, zone });
-      }
+  useEffect(() => {
+    if (!editMode && floorMap) {
+      setGridCols(floorMap.cols || 6);
+      setGridRows(floorMap.rows || 5);
+      setStacks(floorMap.stacks || []);
     }
-    return initial;
-  });
+  }, [floorMap, editMode]);
 
   useEffect(() => {
     if (selectedNode && selectedNode.zone) {
@@ -532,6 +530,7 @@ export default function WarehouseHeatmap3D() {
                     onClick={() => {
                       setShowSavePrompt(false);
                       setEditMode(false);
+                      setFloorMap({ cols: gridCols, rows: gridRows, stacks });
                     }}
                     className="px-4 py-2 text-sm font-bold bg-grain-500 text-white rounded-md hover:bg-grain-600 transition shadow-sm cursor-pointer"
                   >

@@ -314,6 +314,36 @@ export async function syncAllNodesToFirebase(nodes) {
   }
 }
 
+export function subscribeToRealtimeFloorMap(onFloorMapUpdated) {
+  if (!database) initFirebase();
+  if (!database) return () => {};
+
+  const floorMapRef = ref(database, 'floorMap');
+  return onValue(floorMapRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      onFloorMapUpdated(data);
+    }
+  }, (error) => {
+    console.warn("[Firebase] Floor map sync notice:", error.message);
+  });
+}
+
+export async function syncFloorMapToFirebase(floorMap) {
+  if (!database) initFirebase();
+  if (!database) return false;
+
+  try {
+    const floorMapRef = ref(database, 'floorMap');
+    await set(floorMapRef, floorMap);
+    console.log("[Firebase Cloud] Successfully synchronized floor map to Firebase Realtime Database.");
+    return true;
+  } catch (err) {
+    console.warn("[Firebase] Floor map sync error:", err.message);
+    return false;
+  }
+}
+
 // Push live node telemetry update to Firebase (AUTOMATICALLY SAVED IN REALTIME DB)
 export async function pushNodeTelemetryToFirebase(nodeId, telemetryData) {
   if (!database) initFirebase();
@@ -351,4 +381,25 @@ export async function pushAlertToFirebase(alertData) {
     console.warn("[Firebase] Alert push notice:", err.message);
     return false;
   }
+}
+
+export function subscribeToRealtimeAlerts(onAlertsUpdated) {
+  if (!database) initFirebase();
+  if (!database) return () => {};
+
+  const alertsRef = ref(database, 'alerts');
+  return onValue(alertsRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      const alertsArray = Object.keys(data).map(key => ({
+        ...data[key],
+        firebaseKey: key
+      })).sort((a, b) => b.createdAt - a.createdAt);
+      onAlertsUpdated(alertsArray);
+    } else {
+      onAlertsUpdated([]);
+    }
+  }, (error) => {
+    console.warn("[Firebase] Alerts sync notice:", error.message);
+  });
 }

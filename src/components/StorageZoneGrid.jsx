@@ -28,23 +28,28 @@ export default function StorageZoneGrid() {
     connectPhysicalHardware,
     isHardwareConnected,
     resetToBlankState,
-    triggerOutbreak
+    triggerOutbreak,
+    floorMap
   } = useTelemetry();
 
-  const zoneDefinitions = [
-    { code: 'A1', name: 'Rice Bin A1' },
-    { code: 'B1', name: 'Rice Bin B1' },
-    { code: 'C1', name: 'Rice Bin C1' },
-    { code: 'D1', name: 'Rice Bin D1' },
-    { code: 'A2', name: 'Rice Bin A2' },
-    { code: 'B2', name: 'Rice Bin B2' },
-    { code: 'C2', name: 'Rice Bin C2' },
-    { code: 'D2', name: 'Rice Bin D2' },
-    { code: 'A3', name: 'Rice Bin A3' },
-    { code: 'B3', name: 'Rice Bin B3' },
-    { code: 'C3', name: 'Rice Bin C3' },
-    { code: 'D3', name: 'Rice Bin D3' },
-  ];
+  // Deduplicate and group by base zone (ignoring levels for the main overview)
+  const zoneDefinitions = [];
+  if (floorMap && floorMap.stacks) {
+    const uniqueZones = new Set();
+    floorMap.stacks.forEach(stk => {
+      uniqueZones.add(stk.zone);
+    });
+    
+    Array.from(uniqueZones).forEach((zoneName, i) => {
+      zoneDefinitions.push({
+        code: `Z${i + 1}`,
+        name: zoneName
+      });
+    });
+  }
+
+  // Sort zone definitions alphabetically to ensure consistent grid order
+  zoneDefinitions.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
 
   // Dynamically compute zone data from live/persisted telemetry nodes
   const zonesList = zoneDefinitions.map(z => {
@@ -164,48 +169,6 @@ export default function StorageZoneGrid() {
         </div>
       )}
 
-      {/* Sensor Data Status Notification Banner (Blank State Warning) */}
-      {!hasAnyTelemetryData && (
-        <div className="bg-husk border border-ink-100 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-card">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 bg-grain-100 text-grain-700 rounded-lg border border-grain-200 shrink-0">
-              <Radio className="w-5 h-5 text-grain-600 animate-pulse" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-ink-900">Sensor Status: Ready &amp; Awaiting Data</h4>
-              <p className="text-[11px] text-ink-400 mt-0.5">
-                All storage zones are blank. {isAdmin 
-                  ? 'Click "Connect Hardware Sensor" to pair your physical Seeed XIAO ESP32-S3 sensor, or click "Test Sensor Signal".' 
-                  : 'System is in Operator Read-Only mode. Telemetry updates automatically when received.'}
-              </p>
-            </div>
-          </div>
-
-          {isAdmin ? (
-            <div className="flex items-center space-x-2 shrink-0">
-              <button
-                onClick={connectPhysicalHardware}
-                className="flex items-center space-x-1.5 px-3 py-1.5 bg-grain-500 hover:bg-grain-600 text-white text-xs font-bold rounded-md shadow-card transition cursor-pointer"
-              >
-                <Usb className="w-3.5 h-3.5" />
-                <span>Connect Hardware Sensor</span>
-              </button>
-              <button
-                onClick={() => triggerOutbreak('Bin B1')}
-                className="px-3 py-1.5 bg-paper hover:bg-husk text-ink-800 text-xs font-bold rounded-md border border-ink-100 shadow-card transition cursor-pointer"
-              >
-                Test Sensor Signal
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-1.5 text-xs text-grain-700 font-bold bg-grain-50 px-3 py-1.5 rounded-md border border-grain-200 shrink-0">
-              <Eye className="w-3.5 h-3.5 text-grain-500" />
-              <span>Operator Read-Only</span>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Top Level Non-Tech Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Pest Activity */}
@@ -302,7 +265,9 @@ export default function StorageZoneGrid() {
                 key={z.code}
                 onClick={() => {
                   const targetNode = nodes.find(n => n.zone === z.name) || nodes[0];
-                  setSelectedNodeId(targetNode.id);
+                  if (targetNode) {
+                    setSelectedNodeId(targetNode.id);
+                  }
                   setActiveTab('heatmap');
                 }}
                 className={`p-4 rounded-lg border cursor-pointer hover:shadow-card transition flex flex-col justify-between min-h-[110px] ${z.color}`}
