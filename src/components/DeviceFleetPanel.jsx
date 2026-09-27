@@ -18,12 +18,36 @@ import {
 } from 'lucide-react';
 
 export default function DeviceFleetPanel() {
-  const { activeNodes, setSelectedNodeId, setActiveTab, changeNodeZone, isAdmin, connectPhysicalHardware, isHardwareConnected, triggerOutbreak } = useTelemetry();
+  const { 
+    activeNodes, 
+    setSelectedNodeId, 
+    setActiveTab, 
+    changeNodeZone, 
+    isAdmin, 
+    connectPhysicalHardware, 
+    isHardwareConnected, 
+    triggerOutbreak,
+    floorMap,
+    activeWarehouse
+  } = useTelemetry();
 
-  const availableZones = [
+  // Dynamically compute active bins from floorMap
+  const activeStackZones = React.useMemo(() => {
+    if (!floorMap?.stacks || !Array.isArray(floorMap.stacks)) return [];
+    return Array.from(new Set(floorMap.stacks.map(s => s?.zone).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [floorMap]);
+
+  // Only display sensors that are present on the Rice floor map
+  const displayedNodes = React.useMemo(() => {
+    if (activeStackZones.length === 0) return [];
+    return activeNodes.filter(node => node && node.zone && activeStackZones.includes(node.zone));
+  }, [activeNodes, activeStackZones]);
+
+  const availableZones = activeStackZones.length > 0 ? activeStackZones : [
     'Bin A1', 'Bin B1', 'Bin C1', 'Bin D1',
-    'Bin A2', 'Bin B2', 'Bin C2', 'Bin D2',
-    'Bin A3', 'Bin B3', 'Bin C3', 'Bin D3'
+    'Bin A2', 'Bin B2', 'Bin C2', 'Bin D2'
   ];
 
   return (
@@ -42,21 +66,21 @@ export default function DeviceFleetPanel() {
 
         <div className="flex items-center space-x-3 text-xs">
           <div className="px-3 py-1.5 bg-husk rounded-md border border-ink-100 text-ink-800 font-medium font-mono">
-            Active Sensors: <span className="text-grain-600 font-bold">{activeNodes.length}</span>
+            Active Sensors on Floor Map: <span className="text-grain-600 font-bold">{displayedNodes.length}</span>
           </div>
         </div>
       </div>
 
       {/* Fleet Table or Empty State */}
-      {activeNodes.length === 0 ? (
+      {displayedNodes.length === 0 ? (
         <div className="p-12 text-center space-y-4 bg-paper border border-ink-100 rounded-xl shadow-card">
           <div className="p-4 bg-husk rounded-full w-16 h-16 mx-auto flex items-center justify-center border border-ink-100">
             <RadioTower className="w-8 h-8 text-grain-500 animate-pulse" />
           </div>
           <div>
-            <h3 className="font-display font-bold text-ink-900 text-base">No Sensors Currently Connected</h3>
+            <h3 className="font-display font-bold text-ink-900 text-base">No Sensors on Current Floor Map Stacks</h3>
             <p className="text-xs text-ink-400 max-w-md mx-auto mt-1">
-              Sensors will automatically pop up here when connected via USB COM4 hardware, Firebase cloud sync, or when telemetry data is received.
+              Sensors will automatically pop up here when assigned to active bins currently placed on the Rice Floor Map tab ({activeWarehouse}).
             </p>
           </div>
 
@@ -69,12 +93,14 @@ export default function DeviceFleetPanel() {
                 <Usb className="w-4 h-4" />
                 <span>Connect Hardware Sensor (COM4)</span>
               </button>
-              <button
-                onClick={() => triggerOutbreak('Bin B1')}
-                className="px-4 py-2 bg-husk hover:bg-paper text-ink-800 text-xs font-bold rounded-md border border-ink-100 shadow-card transition cursor-pointer"
-              >
-                Test Sensor Signal (Bin B1)
-              </button>
+              {availableZones.length > 0 && (
+                <button
+                  onClick={() => triggerOutbreak(availableZones[0])}
+                  className="px-4 py-2 bg-husk hover:bg-paper text-ink-800 text-xs font-bold rounded-md border border-ink-100 shadow-card transition cursor-pointer"
+                >
+                  Test Sensor Signal ({availableZones[0]})
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -97,7 +123,7 @@ export default function DeviceFleetPanel() {
               </thead>
 
               <tbody className="divide-y divide-ink-100">
-                {activeNodes.map(node => (
+                {displayedNodes.map(node => (
                   <tr 
                     key={node.id}
                     className="hover:bg-husk/50 transition text-ink-800"

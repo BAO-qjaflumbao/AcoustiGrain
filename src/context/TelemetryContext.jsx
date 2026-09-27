@@ -7,7 +7,10 @@ import {
   subscribeToRealtimeFloorMap,
   syncFloorMapToFirebase,
   subscribeToRealtimeAlerts,
-  pushAlertToFirebase
+  pushAlertToFirebase,
+  subscribeToLocationLayout,
+  syncLocationLayoutToFirebase,
+  sanitizeFirebaseKey
 } from '../services/firebaseService';
 
 const TelemetryContext = createContext(null);
@@ -60,6 +63,15 @@ const DEFAULT_FLOOR_MAP = {
   })()
 };
 
+export const sanitizeLayout = (layout) => {
+  if (!layout) return DEFAULT_FLOOR_MAP;
+  const cols = Math.max(Number(layout.cols) || 6, 1);
+  const rows = Math.max(Number(layout.rows) || 5, 1);
+  const stacks = (Array.isArray(layout.stacks) ? layout.stacks : [])
+    .filter(s => s && s.x >= 0 && s.x < cols && s.y >= 0 && s.y < rows);
+  return { cols, rows, stacks };
+};
+
 export function TelemetryProvider({ children, user }) {
   const isAdmin = Boolean(
     user?.role?.toLowerCase().includes('admin') || 
@@ -71,9 +83,27 @@ export function TelemetryProvider({ children, user }) {
   const [selectedNodeId, setSelectedNodeId] = useState("DEV-003");
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isLiveSimulating, setIsLiveSimulating] = useState(false);
-  const [activeWarehouse, setActiveWarehouse] = useState("NFA Warehouse #4 - Quezon City Hub");
+  const [activeWarehouse, setActiveWarehouse] = useState(() => {
+    try {
+      const saved = localStorage.getItem('acoustigrain_active_warehouse');
+      return saved || "NFA Warehouse #4 - Quezon City Hub";
+    } catch (e) {
+      return "NFA Warehouse #4 - Quezon City Hub";
+    }
+  });
 
-  const [floorMap, setFloorMap] = useState(DEFAULT_FLOOR_MAP);
+  const [floorMap, setFloorMap] = useState(() => {
+    try {
+      const savedWh = localStorage.getItem('acoustigrain_active_warehouse') || "NFA Warehouse #4 - Quezon City Hub";
+      const safeLoc = sanitizeFirebaseKey(savedWh);
+      const savedLayout = localStorage.getItem(`acoustigrain_layout_${safeLoc}`);
+      if (savedLayout) {
+        const parsed = JSON.parse(savedLayout);
+        if (parsed && Array.isArray(parsed.stacks) && parsed.stacks.length > 0) return sanitizeLayout(parsed);
+      }
+    } catch (e) {}
+    return DEFAULT_FLOOR_MAP;
+  });
 
   // Dynamically compute accurate 30-day historical data synchronized with live nodes
   const historicalData = useMemo(() => {
@@ -86,6 +116,41 @@ export function TelemetryProvider({ children, user }) {
 
   const lastSyncedNodesRef = useRef(null);
   const lastSyncedFloorMapRef = useRef(null);
+
+  // Subscribe to location-specific layout in Firebase & sync with active warehouse
+  useEffect(() => {
+    try {
+      localStorage.setItem('acoustigrain_active_warehouse', activeWarehouse);
+    } catch (e) {}
+
+    const safeLoc = sanitizeFirebaseKey(activeWarehouse);
+    const savedLocal = localStorage.getItem(`acoustigrain_layout_${safeLoc}`);
+    if (savedLocal) {
+      try {
+        const parsed = JSON.parse(savedLocal);
+        if (parsed && Array.isArray(parsed.stacks) && parsed.stacks.length > 0) {
+          const clean = sanitizeLayout(parsed);
+          lastSyncedFloorMapRef.current = JSON.stringify(clean);
+          setFloorMap(clean);
+        }
+      } catch (e) {}
+    }
+
+    const unsub = subscribeToLocationLayout(activeWarehouse, (cloudLayout) => {
+      if (cloudLayout && Array.isArray(cloudLayout.stacks) && cloudLayout.stacks.length > 0) {
+        const clean = sanitizeLayout(cloudLayout);
+        lastSyncedFloorMapRef.current = JSON.stringify(clean);
+        setFloorMap(clean);
+        try {
+          localStorage.setItem(`acoustigrain_layout_${safeLoc}`, JSON.stringify(clean));
+        } catch (e) {}
+      }
+    });
+
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [activeWarehouse]);
 
   // Automatically persist received sensor nodes data to localStorage & Firebase whenever updated
   useEffect(() => {
@@ -103,14 +168,21 @@ export function TelemetryProvider({ children, user }) {
     }
   }, [nodes]);
 
-  // Sync floorMap changes to firebase
+  // Sync floorMap changes to location-specific firebase layout & local storage
   useEffect(() => {
-    const currentFloorMapStr = JSON.stringify(floorMap);
+    if (!floorMap || !floorMap.stacks) return;
+    const cleanFloorMap = sanitizeLayout(floorMap);
+    const currentFloorMapStr = JSON.stringify(cleanFloorMap);
     if (lastSyncedFloorMapRef.current !== currentFloorMapStr) {
-      syncFloorMapToFirebase(floorMap);
+      const safeLoc = sanitizeFirebaseKey(activeWarehouse);
+      try {
+        localStorage.setItem(`acoustigrain_layout_${safeLoc}`, currentFloorMapStr);
+      } catch (e) {}
+      syncLocationLayoutToFirebase(activeWarehouse, cleanFloorMap);
+      syncFloorMapToFirebase(cleanFloorMap);
       lastSyncedFloorMapRef.current = currentFloorMapStr;
     }
-  }, [floorMap]);
+  }, [floorMap, activeWarehouse]);
 
   // Automatically persist alerts to localStorage
   useEffect(() => {

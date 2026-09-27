@@ -403,3 +403,92 @@ export function subscribeToRealtimeAlerts(onAlertsUpdated) {
     console.warn("[Firebase] Alerts sync notice:", error.message);
   });
 }
+
+// Sanitize key to satisfy Firebase Realtime Database key constraints (cannot contain '.', '#', '$', '[', ']', or '/')
+export function sanitizeFirebaseKey(key) {
+  if (!key) return 'default_warehouse';
+  return String(key).replace(/[.#$\[\]\/]/g, '_').trim();
+}
+
+// Location-based Layout subscriptions
+export function subscribeToLocationLayout(locationId, onLayoutUpdated) {
+  try {
+    if (!database) initFirebase();
+    if (!database) return () => {};
+
+    const safeLocationId = sanitizeFirebaseKey(locationId);
+    const layoutRef = ref(database, `layouts/${safeLocationId}`);
+    return onValue(layoutRef, (snapshot) => {
+      if (snapshot.exists()) {
+        onLayoutUpdated(snapshot.val());
+      } else {
+        onLayoutUpdated(null); // No layout yet
+      }
+    }, (err) => {
+      console.warn("[Firebase] Location layout sync notice:", err?.message);
+    });
+  } catch (err) {
+    console.warn("[Firebase] Failed to subscribe to location layout:", err?.message);
+    return () => {};
+  }
+}
+
+export async function syncLocationLayoutToFirebase(locationId, layoutData) {
+  try {
+    if (!database) initFirebase();
+    if (!database) return false;
+
+    const safeLocationId = sanitizeFirebaseKey(locationId);
+    const layoutRef = ref(database, `layouts/${safeLocationId}`);
+    await set(layoutRef, layoutData);
+    return true;
+  } catch (err) {
+    console.error("Layout sync error:", err);
+    return false;
+  }
+}
+
+// Preset management
+export function subscribeToPresets(onPresetsUpdated) {
+  try {
+    if (!database) initFirebase();
+    if (!database) return () => {};
+
+    const presetsRef = ref(database, 'presets');
+    return onValue(presetsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const presetsArray = Object.keys(data).map(key => ({
+          ...data[key],
+          id: key
+        }));
+        onPresetsUpdated(presetsArray);
+      } else {
+        onPresetsUpdated([]);
+      }
+    }, (err) => {
+      console.warn("[Firebase] Presets sync notice:", err?.message);
+    });
+  } catch (err) {
+    console.warn("[Firebase] Failed to subscribe to presets:", err?.message);
+    return () => {};
+  }
+}
+
+export async function saveLayoutPreset(presetData) {
+  if (!database) initFirebase();
+  if (!database) return false;
+
+  try {
+    const presetsRef = ref(database, 'presets');
+    const newPresetRef = push(presetsRef);
+    await set(newPresetRef, {
+      ...presetData,
+      createdAt: Date.now()
+    });
+    return true;
+  } catch (err) {
+    console.error("Preset save error:", err);
+    return false;
+  }
+}

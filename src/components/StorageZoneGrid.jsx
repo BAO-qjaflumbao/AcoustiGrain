@@ -29,15 +29,16 @@ export default function StorageZoneGrid() {
     isHardwareConnected,
     resetToBlankState,
     triggerOutbreak,
-    floorMap
+    floorMap,
+    activeWarehouse
   } = useTelemetry();
 
   // Deduplicate and group by base zone (ignoring levels for the main overview)
   const zoneDefinitions = [];
-  if (floorMap && floorMap.stacks) {
+  if (floorMap && floorMap.stacks && Array.isArray(floorMap.stacks)) {
     const uniqueZones = new Set();
     floorMap.stacks.forEach(stk => {
-      uniqueZones.add(stk.zone);
+      if (stk && stk.zone) uniqueZones.add(stk.zone);
     });
     
     Array.from(uniqueZones).forEach((zoneName, i) => {
@@ -87,11 +88,12 @@ export default function StorageZoneGrid() {
       {/* Top Banner: Header + Quick Actions */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl font-bold text-ink-900">
-            NFA Rice Warehouse Overview
+          <h2 className="font-display text-xl font-bold text-ink-900 flex flex-wrap items-center gap-2">
+            <span>NFA Rice Warehouse Overview</span>
+            <span className="text-xs font-mono font-medium text-grain-600 bg-grain-50 px-2 py-0.5 rounded border border-grain-200">{activeWarehouse}</span>
           </h2>
           <p className="text-xs text-ink-400 mt-0.5">
-            Real-time acoustic pest monitoring &amp; grain safety assessment for warehouse staff.
+            Real-time acoustic pest monitoring &amp; grain safety assessment across active floor stacks.
           </p>
         </div>
 
@@ -239,8 +241,15 @@ export default function StorageZoneGrid() {
         <div className="lg:col-span-2 border border-ink-100 bg-paper rounded-xl p-5 space-y-4 shadow-card">
           <div className="flex items-center justify-between border-b border-ink-100 pb-3">
             <div>
-              <h3 className="font-display text-base font-semibold text-ink-900">Rice Storage Bin Grid</h3>
-              <p className="text-xs text-ink-400">Click any bin below to inspect insect depth &amp; sound profile</p>
+              <h3 className="font-display text-base font-semibold text-ink-900 flex items-center space-x-2">
+                <span>Rice Storage Bin Grid</span>
+                <span className="text-xs font-mono font-bold text-grain-700 bg-husk px-2 py-0.5 rounded border border-ink-200">
+                  {zoneDefinitions.length} Configured Bins
+                </span>
+              </h3>
+              <p className="text-xs text-ink-400">
+                Synchronized with active stacks in Rice Floor Map ({activeWarehouse}). Click any bin to inspect insect depth &amp; sound profile.
+              </p>
             </div>
             <div className="flex items-center space-x-3 text-xs text-ink-400">
               <span className="flex items-center space-x-1">
