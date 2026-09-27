@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { INITIAL_NODES, generateFFTSpectrum, generateHistoricalTrendData } from '../services/simulatorService';
 import { subscribeToRealtimeNodes, pushNodeTelemetryToFirebase, syncAllNodesToFirebase } from '../services/firebaseService';
 
@@ -71,11 +71,16 @@ export function TelemetryProvider({ children, user }) {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isLiveSimulating, setIsLiveSimulating] = useState(false);
   const [activeWarehouse, setActiveWarehouse] = useState("NFA Warehouse #4 - Quezon City Hub");
-  const [historicalData] = useState(generateHistoricalTrendData());
+  const [historicalScenario, setHistoricalScenario] = useState('active');
+
+  // Dynamically compute accurate 30-day historical data synchronized with live nodes
+  const historicalData = useMemo(() => {
+    return generateHistoricalTrendData(nodes, historicalScenario);
+  }, [nodes, historicalScenario]);
   
   // WebSerial Hardware Connection State
   const [isHardwareConnected, setIsHardwareConnected] = useState(false);
-  const [serialPort, setSerialPort] = useState(null);
+  const [_serialPort, setSerialPort] = useState(null);
 
   // Automatically persist received sensor nodes data to localStorage & Firebase whenever updated
   useEffect(() => {
@@ -182,8 +187,8 @@ export function TelemetryProvider({ children, user }) {
     const dbMatch = line.match(/@\s*(-?\d+)\s*dBFS/i);
     const statusMatch = line.match(/Status:\s*(\d+)/i);
     const batMatch = line.match(/(?:Bat|Battery):\s*(\d+)%/i);
-    const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d\.]+)/i);
-    const humMatch = line.match(/(?:Hum|Humidity):\s*([\d\.]+)/i);
+    const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d.]+)/i);
+    const humMatch = line.match(/(?:Hum|Humidity):\s*([\d.]+)/i);
 
     if (freqMatch || dbMatch || statusMatch || batMatch || tempMatch || humMatch) {
       const peakFreqHz = freqMatch ? parseInt(freqMatch[1], 10) : 0;
@@ -388,6 +393,8 @@ export function TelemetryProvider({ children, user }) {
       triggerOutbreak,
       resetToBlankState,
       historicalData,
+      historicalScenario,
+      setHistoricalScenario,
       isHardwareConnected,
       connectPhysicalHardware,
       metrics: {
