@@ -229,14 +229,9 @@ export function TelemetryProvider({ children, user }) {
     const dbMatch = line.match(/@\s*(-?\d+)\s*dBFS/i);
     const statusMatch = line.match(/Status:\s*(\d+)/i);
     const batMatch = line.match(/(?:Bat|Battery):\s*(\d+)%/i);
-<<<<<<< HEAD
     const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d.]+)/i);
     const humMatch = line.match(/(?:Hum|Humidity):\s*([\d.]+)/i);
-=======
-    const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d\.]+)/i);
-    const humMatch = line.match(/(?:Hum|Humidity):\s*([\d\.]+)/i);
     const depthMatch = line.match(/(?:Depth):\s*(\d+)/i);
->>>>>>> ea097a0 (Update firmware & WebSerial telemetry parser for live DHT11 temperature, air moisture, and probe depth sensing)
 
     if (freqMatch || dbMatch || statusMatch || batMatch || tempMatch || humMatch || depthMatch) {
       const peakFreqHz = freqMatch ? parseInt(freqMatch[1], 10) : 0;
