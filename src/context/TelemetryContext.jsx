@@ -72,14 +72,13 @@ export function TelemetryProvider({ children, user }) {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isLiveSimulating, setIsLiveSimulating] = useState(false);
   const [activeWarehouse, setActiveWarehouse] = useState("NFA Warehouse #4 - Quezon City Hub");
-  const [historicalScenario, setHistoricalScenario] = useState('active');
 
   const [floorMap, setFloorMap] = useState(DEFAULT_FLOOR_MAP);
 
   // Dynamically compute accurate 30-day historical data synchronized with live nodes
   const historicalData = useMemo(() => {
-    return generateHistoricalTrendData(nodes, historicalScenario);
-  }, [nodes, historicalScenario]);
+    return generateHistoricalTrendData(nodes);
+  }, [nodes]);
   
   // WebSerial Hardware Connection State
   const [isHardwareConnected, setIsHardwareConnected] = useState(false);
@@ -510,8 +509,6 @@ export function TelemetryProvider({ children, user }) {
       triggerOutbreak,
       resetToBlankState,
       historicalData,
-      historicalScenario,
-      setHistoricalScenario,
       isHardwareConnected,
       connectPhysicalHardware,
       metrics: {
