@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTelemetry } from '../context/TelemetryContext';
 import { subscribeToLocationLayout, syncLocationLayoutToFirebase, subscribeToPresets, saveLayoutPreset } from '../services/firebaseService';
+import SeverityHeatmap3D from './SeverityHeatmap3D';
 import { 
   Box, RotateCw, ZoomIn, ZoomOut, RefreshCw, Move,
   ChevronUp, ChevronDown, Edit3, MousePointer2,
@@ -449,6 +450,9 @@ export default function WarehouseHeatmap3D() {
       }
     } else {
       setInitialLayout({ stacks: [...stacks], cols: gridCols, rows: gridRows });
+      if (viewMode === 'heatmap3d') {
+        setViewMode('isometric');
+      }
       setEditMode(true);
     }
   };
@@ -714,6 +718,16 @@ export default function WarehouseHeatmap3D() {
             >
               Flat 2D View
             </button>
+            <button
+              onClick={() => setViewMode('heatmap3d')}
+              className={`px-3 py-1.5 rounded-md font-medium transition cursor-pointer flex items-center space-x-1.5 ${
+                viewMode === 'heatmap3d' ? 'bg-ink-800 text-white font-bold' : 'text-ink-600 hover:text-ink-900'
+              }`}
+              title="360° 3D Severity Heatmap (Continuous Orbit & Height Extrusion)"
+            >
+              <Flame className={`w-3.5 h-3.5 ${viewMode === 'heatmap3d' ? 'text-amber-400' : 'text-moderate'}`} />
+              <span>360&deg; 3D Heatmap</span>
+            </button>
           </div>
 
           <div className="flex items-center bg-husk p-1 rounded-md border border-ink-100 text-xs">
@@ -734,9 +748,20 @@ export default function WarehouseHeatmap3D() {
             <button 
               onClick={() => setRotationAngle(prev => (prev + 90) % 360)} 
               className="p-1.5 text-ink-600 hover:text-ink-900 border-l border-ink-100 ml-1 cursor-pointer flex items-center space-x-1"
+              title="Rotate 3D View (90° Snap)"
             >
               <RotateCw className="w-3.5 h-3.5" />
             </button>
+
+            {viewMode === 'isometric' && (
+              <button
+                onClick={() => setViewMode('heatmap3d')}
+                className="px-2 py-1 text-[11px] font-mono font-bold text-grain-700 hover:text-white bg-grain-50 hover:bg-grain-500 border-l border-ink-100 ml-1 rounded cursor-pointer transition flex items-center space-x-1"
+                title="Switch to 360° Continuous Orbit Heatmap"
+              >
+                <span>360&deg;</span>
+              </button>
+            )}
 
             <button 
               onClick={handleResetView} 
@@ -820,7 +845,32 @@ export default function WarehouseHeatmap3D() {
           )}
 
           {/* Internal Canvas Display Viewport */}
-          <div className="relative w-full h-[450px] rounded-lg overflow-hidden border border-ink-100 bg-[#F7F5F0]">
+          {viewMode === 'heatmap3d' ? (
+            <SeverityHeatmap3D
+              stacks={stacks}
+              gridCols={gridCols}
+              gridRows={gridRows}
+              nodes={nodes}
+              activeZ={activeZ}
+              setActiveZ={setActiveZ}
+              selectedZone={selectedZone}
+              setSelectedZone={setSelectedZone}
+              setSelectedNodeId={setSelectedNodeId}
+              activeWarehouse={activeWarehouse}
+            />
+          ) : (
+            <div className="relative w-full h-[450px] rounded-lg overflow-hidden border border-ink-100 bg-[#F7F5F0]">
+              {/* Quick 360° Heatmap Switcher on Top-Right */}
+              {viewMode === 'isometric' && !editMode && (
+                <button
+                  onClick={() => setViewMode('heatmap3d')}
+                  className="absolute top-4 right-4 z-10 flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-paper/90 backdrop-blur-xs border border-ink-200 text-xs font-semibold text-ink-700 hover:text-ink-900 hover:bg-paper shadow-sm transition cursor-pointer pointer-events-auto"
+                  title="Switch to 360° 3D Severity Heatmap"
+                >
+                  <Flame className="w-3.5 h-3.5 text-moderate" />
+                  <span>360&deg; 3D Heatmap</span>
+                </button>
+              )}
             {/* Level Selector with Recenter Button (green dot) underneath - Transparent Container */}
             <div className="absolute top-4 left-4 z-10 flex flex-col items-center bg-transparent p-1 pointer-events-auto select-none">
               <span className="text-[9px] font-bold text-ink-600/80 mb-0.5 tracking-wider drop-shadow-sm">Z-PLANE</span>
@@ -970,7 +1020,8 @@ export default function WarehouseHeatmap3D() {
                 {tooltipPos.text}
               </div>
             )}
-          </div>
+            </div>
+          )}
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs bg-husk p-3 rounded-lg border border-ink-100">
             <div className="flex items-center space-x-4">
@@ -990,7 +1041,13 @@ export default function WarehouseHeatmap3D() {
 
             <span className="text-[11px] font-mono text-grain-700 font-semibold flex items-center space-x-1">
               <Move className="w-3.5 h-3.5 text-grain-500" />
-              <span>{editMode ? 'Edit Mode Active: Click cells to Add/Remove Bins or use arrows to expand grid' : 'Click & Drag to Move Floor • Scroll to Zoom'}</span>
+              <span>
+                {viewMode === 'heatmap3d'
+                  ? '360° Severity Heatmap: Drag to orbit • Scroll to zoom • Click bin to inspect'
+                  : editMode 
+                  ? 'Edit Mode Active: Click cells to Add/Remove Bins or use arrows to expand grid' 
+                  : 'Click & Drag to Move Floor • Scroll to Zoom'}
+              </span>
             </span>
           </div>
 
@@ -1129,6 +1186,10 @@ export default function WarehouseHeatmap3D() {
                     onClick={() => {
                       setSelectedZone(zone);
                       if (zoneNode) setSelectedNodeId(zoneNode.id);
+                      const zoneStack = (stacks || []).find(s => s && s.zone === zone);
+                      if (zoneStack && zoneStack.z !== undefined && zoneStack.z !== activeZ) {
+                        setActiveZ(zoneStack.z);
+                      }
                     }}
                     className={`px-2 py-1.5 rounded-md text-xs font-mono font-semibold border text-center transition cursor-pointer ${
                       isSelected 
