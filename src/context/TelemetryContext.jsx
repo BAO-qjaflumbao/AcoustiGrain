@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { INITIAL_NODES, generateFFTSpectrum, generateHistoricalTrendData } from '../services/simulatorService';
 import { 
   subscribeToRealtimeNodes, 
@@ -85,11 +85,20 @@ export function TelemetryProvider({ children, user }) {
   const [isHardwareConnected, setIsHardwareConnected] = useState(false);
   const [_serialPort, setSerialPort] = useState(null);
 
+  const lastSyncedNodesRef = useRef(null);
+  const lastSyncedFloorMapRef = useRef(null);
+
   // Automatically persist received sensor nodes data to localStorage & Firebase whenever updated
   useEffect(() => {
     try {
       localStorage.setItem('acoustigrain_saved_nodes', JSON.stringify(nodes));
-      syncAllNodesToFirebase(nodes);
+      
+      const currentNodesStr = JSON.stringify(nodes);
+      // Only push to Firebase if the state changed locally, not if we just received it
+      if (lastSyncedNodesRef.current !== currentNodesStr) {
+        syncAllNodesToFirebase(nodes);
+        lastSyncedNodesRef.current = currentNodesStr;
+      }
     } catch (e) {
       console.error("Failed to persist nodes:", e);
     }
@@ -97,7 +106,11 @@ export function TelemetryProvider({ children, user }) {
 
   // Sync floorMap changes to firebase
   useEffect(() => {
-    syncFloorMapToFirebase(floorMap);
+    const currentFloorMapStr = JSON.stringify(floorMap);
+    if (lastSyncedFloorMapRef.current !== currentFloorMapStr) {
+      syncFloorMapToFirebase(floorMap);
+      lastSyncedFloorMapRef.current = currentFloorMapStr;
+    }
   }, [floorMap]);
 
   // Automatically persist alerts to localStorage
@@ -136,6 +149,8 @@ export function TelemetryProvider({ children, user }) {
               });
             }
           });
+          
+          lastSyncedNodesRef.current = JSON.stringify(updated);
           return updated;
         });
       }
@@ -143,6 +158,7 @@ export function TelemetryProvider({ children, user }) {
 
     const unsubscribeFloorMap = subscribeToRealtimeFloorMap((cloudFloorMap) => {
       if (cloudFloorMap) {
+        lastSyncedFloorMapRef.current = JSON.stringify(cloudFloorMap);
         setFloorMap(cloudFloorMap);
       }
     });
