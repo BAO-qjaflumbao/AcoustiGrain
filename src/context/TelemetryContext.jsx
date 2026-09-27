@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { INITIAL_NODES, generateFFTSpectrum, generateHistoricalTrendData } from '../services/simulatorService';
 import { subscribeToRealtimeNodes, pushNodeTelemetryToFirebase, syncAllNodesToFirebase } from '../services/firebaseService';
 
@@ -49,11 +49,16 @@ export function TelemetryProvider({ children, user }) {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isLiveSimulating, setIsLiveSimulating] = useState(false);
   const [activeWarehouse, setActiveWarehouse] = useState("NFA Warehouse #4 - Quezon City Hub");
-  const [historicalData] = useState(generateHistoricalTrendData());
+  const [historicalScenario, setHistoricalScenario] = useState('active');
+
+  // Dynamically compute accurate 30-day historical data synchronized with live nodes
+  const historicalData = useMemo(() => {
+    return generateHistoricalTrendData(nodes, historicalScenario);
+  }, [nodes, historicalScenario]);
   
   // WebSerial Hardware Connection State
   const [isHardwareConnected, setIsHardwareConnected] = useState(false);
-  const [serialPort, setSerialPort] = useState(null);
+  const [_serialPort, setSerialPort] = useState(null);
 
   // Automatically persist received sensor nodes data to localStorage & Firebase whenever updated
   useEffect(() => {
@@ -114,6 +119,11 @@ export function TelemetryProvider({ children, user }) {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, zone: newZone } : n));
   };
 
+  // Change probe insertion depth (cm) for any hardware sensor node
+  const changeNodeDepth = (nodeId, newDepth) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, depthCm: parseInt(newDepth, 10) || 0 } : n));
+  };
+
   // WebSerial API: Connect physical Seeed Studio XIAO ESP32-S3 via USB COM port (Admin Only)
   const connectPhysicalHardware = async () => {
     if (!isAdmin) {
@@ -133,6 +143,7 @@ export function TelemetryProvider({ children, user }) {
       setIsHardwareConnected(true);
 
       // Auto-activate DEV-003 node on hardware connect in Safe initial state (0% Infestation)
+      // Auto-activate DEV-003 node on hardware connect in Safe initial state (0% Infestation)
       setNodes(prev => {
         const exists = prev.some(n => n.id === 'DEV-003');
         if (exists) {
@@ -145,7 +156,7 @@ export function TelemetryProvider({ children, user }) {
             amplitudeDb: -90,
             temperature: 0,
             humidity: 0,
-            depthCm: 0,
+            depthCm: n.depthCm > 0 ? n.depthCm : 45,
             battery: 0,
             lastSeen: "Just now (Hardware Connected - Insert probe in rice)"
           } : n);
@@ -157,8 +168,8 @@ export function TelemetryProvider({ children, user }) {
           stackId: "stack-b1",
           gridX: 1,
           gridY: 0,
-          depthCm: 0,
-          battery: 0,
+          depthCm: 45,
+          battery: 94,
           rssi: -65,
           snr: 9.8,
           status: "Safe",
@@ -189,7 +200,16 @@ export function TelemetryProvider({ children, user }) {
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (trimmed.includes("Transmitting") || trimmed.includes("Peak:") || trimmed.includes("Status:") || trimmed.includes("@")) {
+          if (
+            trimmed.includes("Transmitting") || 
+            trimmed.includes("Peak:") || 
+            trimmed.includes("Status:") || 
+            trimmed.includes("@") ||
+            trimmed.includes("DHT11") ||
+            trimmed.includes("Temp") ||
+            trimmed.includes("Hum") ||
+            trimmed.includes("Depth")
+          ) {
             parseSerialTelemetry(trimmed);
           }
         }
@@ -206,16 +226,18 @@ export function TelemetryProvider({ children, user }) {
     const dbMatch = line.match(/@\s*(-?\d+)\s*dBFS/i);
     const statusMatch = line.match(/Status:\s*(\d+)/i);
     const batMatch = line.match(/(?:Bat|Battery):\s*(\d+)%/i);
-    const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d\.]+)/i);
-    const humMatch = line.match(/(?:Hum|Humidity):\s*([\d\.]+)/i);
+    const tempMatch = line.match(/(?:Temp|Temperature):\s*([\d.]+)/i);
+    const humMatch = line.match(/(?:Hum|Humidity):\s*([\d.]+)/i);
+    const depthMatch = line.match(/(?:Depth):\s*(\d+)/i);
 
-    if (freqMatch || dbMatch || statusMatch || batMatch || tempMatch || humMatch) {
+    if (freqMatch || dbMatch || statusMatch || batMatch || tempMatch || humMatch || depthMatch) {
       const peakFreqHz = freqMatch ? parseInt(freqMatch[1], 10) : 0;
       const amplitudeDb = dbMatch ? parseInt(dbMatch[1], 10) : -90;
       const statusVal = statusMatch ? parseInt(statusMatch[1], 10) : -1;
       const parsedBat = batMatch ? parseInt(batMatch[1], 10) : null;
       const parsedTemp = tempMatch ? parseFloat(tempMatch[1]) : null;
       const parsedHum = humMatch ? parseFloat(humMatch[1]) : null;
+      const parsedDepth = depthMatch ? parseInt(depthMatch[1], 10) : null;
       
       // Bio-Acoustic Grain Insertion & High Sensitivity Filter:
       // Real INMP441 MEMS I2S microphone 24-bit FFT energy for rice grain scratching / Bukbok clicking sits between -85 dBFS and -55 dBFS.
@@ -244,6 +266,7 @@ export function TelemetryProvider({ children, user }) {
         ...(parsedBat !== null && { battery: parsedBat, batteryPct: parsedBat }),
         ...(parsedTemp !== null && { temperature: parsedTemp }),
         ...(parsedHum !== null && { humidity: parsedHum }),
+        ...(parsedDepth !== null && { depthCm: parsedDepth }),
         lastSeen: `Just now (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})`
       };
 
@@ -407,6 +430,7 @@ export function TelemetryProvider({ children, user }) {
       activeNodes,
       setNodes,
       changeNodeZone,
+      changeNodeDepth,
       selectedNode,
       setSelectedNodeId,
       selectedSpectrum,
@@ -421,6 +445,8 @@ export function TelemetryProvider({ children, user }) {
       triggerOutbreak,
       resetToBlankState,
       historicalData,
+      historicalScenario,
+      setHistoricalScenario,
       isHardwareConnected,
       connectPhysicalHardware,
       metrics: {

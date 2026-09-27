@@ -2,15 +2,19 @@
   =================================================================================
   AcoustiGrain: Non-Invasive Bio-Acoustic Infestation Detection Firmware
   Target Board: Seeed Studio XIAO ESP32-S3 Microcontroller
-  Sensors: INMP441 I2S MEMS Microphone & RFM95W 915MHz LoRa Transceiver
+  Sensors: INMP441 I2S MEMS Microphone, DHT11 Temp/Humidity & LoRa Transceiver
   Author: AcoustiGrain Engineering Team (TIP Quezon City - Capstone 1)
   =================================================================================
 */
 
 #include <Arduino.h>
+#include <DHT.h>
 #include "config.h"
 #include "fft_processor.h"
 #include "lora_telemetry.h"
+
+// Instantiate Adafruit DHT sensor on Pin D1
+DHT dhtSensor(PIN_DHT_DATA, DHT11);
 
 FFTProcessor  dsp;
 LoRaManager   radio;
@@ -34,9 +38,9 @@ void setup() {
 
   // 2. Initialize Environmental & Power Sensing Hardware
   pinMode(PIN_BATTERY_ADC, INPUT);
-  pinMode(PIN_DHT_DATA, INPUT_PULLUP);
+  dhtSensor.begin();
   Serial.println(F("[Hardware] Pin A0 initialized for Battery ADC Voltage Sensing"));
-  Serial.println(F("[Hardware] Pin D1 initialized for DHT Temperature & Humidity Sensor"));
+  Serial.println(F("[Hardware] Pin D1 initialized for DHT11 Temperature & Humidity Sensor"));
 
   // 3. Initialize Core Hardware Components
   dsp.setupI2S();
@@ -71,9 +75,21 @@ void loop() {
   uint8_t battPct = (uint8_t)constrain(((batteryVolts - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V)) * 100.0f, 0.0f, 100.0f);
   if (rawAdc == 0 || battPct < 10) battPct = 94; // Default high for USB powered debugging
 
-  // 5. Sample Ambient Grain Bulk Temperature (°C) & Relative Humidity (%RH)
-  float tempC = 31.8f + ((rand() % 10) - 5) * 0.1f;
-  float humPct = 62.5f + ((rand() % 10) - 5) * 0.1f;
+  // 5. Sample Ambient Grain Bulk Temperature (°C) & Relative Humidity (%RH) from DHT11 on Pin D1
+  float tempC = dhtSensor.readTemperature();
+  float humPct = dhtSensor.readHumidity();
+
+  if (isnan(tempC) || isnan(humPct)) {
+    Serial.println(F("[DHT11] ⚠️ Hardware read error on Pin D1 — using fallback readings"));
+    tempC = 29.5f;
+    humPct = 60.0f;
+  } else {
+    Serial.print(F("[DHT11] ✅ Live Reading -> Temp: "));
+    Serial.print(tempC, 1);
+    Serial.print(F(" °C | Humidity: "));
+    Serial.print(humPct, 1);
+    Serial.println(F(" %RH"));
+  }
 
   // Construct Telemetry Packet
   WedgePacket packet;
